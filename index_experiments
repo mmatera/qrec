@@ -1,0 +1,4 @@
+0 1-greedy
+1 0.01-greedy alpha 1.5   learning_rate 1/N
+2 0.01-greedy change_point 1 alpha 1.5 --> alpha = 0.25   learning_rate 1/N
+3 0.01-greedy alpha 1.5   learning_rate 0.005

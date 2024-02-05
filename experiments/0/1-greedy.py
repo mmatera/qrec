@@ -1,6 +1,8 @@
+
+experiment_index=0
 import os
 import sys
-path = os.getcwd()
+path = "experiments/{}/".format(experiment_index)
 sys.path.insert(0, os.getcwd())
 from qrec.utils import *
 import time
