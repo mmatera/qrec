@@ -115,6 +115,19 @@ plt.savefig(directory+"q0.png")
 
 stacked_history = np.stack(details["history"])
 
+policy()
+
+
+
+def Psq(q0,q1,betas_grid,alpha=0.4):
+    ps=0
+    indb, b = policy(q0, betas_grid, ep=0)
+    for n in range(2):
+        indg, g = policy(q1[indb,n,:], [0,1], ep=0)
+        ps+=p(alpha*(-1)**g + beta,n)
+    return 1-ps/2
+
+
 plt.figure()
 ax=plt.subplot(111)
 ax.plot(np.cumsum(stacked_history[:,-1])/np.arange(1,len(stacked_history[:,-1])+1),label=r'$R_t/t$')
