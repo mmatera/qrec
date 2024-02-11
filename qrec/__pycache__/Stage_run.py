@@ -12,9 +12,13 @@ def Update_reload(n0, n1, epsilon, change, rate):
     #epsilon += (1-epsilon) * np.abs(change) * rate
     for i in range(0, len(n1)):
         n0[i] /= 1 + rate * np.abs(change)
+        if n0[i] < 1:
+            n0[i] = 1
         for j in range(0, len(n1[i])):
             for k in range(0, len(n1[i][j])):
                 n1[i, j, k] /= 1 + rate * np.abs(change)
+                if n1[i, j, k] < 1:
+                    n1[i, j, k] = 1
     return n0, n1, epsilon
 
 """
@@ -25,13 +29,15 @@ Hiperparameters:
 [3] Dispersion of random Gaussian.
 [4] Linear relation between temperature and epsilon.
 """
-def Experiment_run(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam = [], N0=0, delta1= 50):
+def Experiment_run(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam = [], N0=0, delta1= 100):
     start = time.time()
     mean_rew = 0
     points = [0, 0]
     epsilon0 = hiperparam[0]
     means = []
-    epsilon = 1
+    mean_rew = 0
+
+    epsilon = details["epsilon"]
     for experiment in range(N0, N0 + N):
         #print(epsilon)
         if experiment%int(N/10)==0:
@@ -43,13 +49,18 @@ def Experiment_run(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam = [
         r = give_reward(g,hidden_phase)
 
         means.append(r)
+        mean_rew += r / delta1
+        
         if len(means) > delta1:
+            mean_rew -= means[0] / delta1
             means.pop(0)
+            
+
+        details["mean_rewards"].append(mean_rew)
+
         if experiment % delta1 == 0:
             points[0] = points[1]
-            mean_rew = 0
-            for i in range(len(means)):
-                mean_rew += means[i] / delta1 
+            
             points[1] = mean_rew
             mean_deriv = (points[1] - points[0]) / delta1
             if mean_deriv < 0:
@@ -67,4 +78,5 @@ def Experiment_run(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam = [
     details["tables"] = [q0,q1,n0,n1]
     end = time.time() - start
     details["total_time"] = end
+    details["epsilon"] = epsilon
     return details
