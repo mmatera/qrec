@@ -43,7 +43,7 @@ def greedy(arr):
     return np.random.choice(np.where( arr == np.max(arr))[0])
 
 def ProbabilityRandom(N, pos_max, pos_val, T, delta1):
-    k = delta1 * (pos_max - pos_val) / (N * (1 + T))
+    k = delta1 * np.abs(pos_max - pos_val) / (N * (1 + T))
     #return np.exp(-1/T) / N + np.exp(-T) * np.exp(-(k2**2)) * np.exp(-(k**2))
     return np.exp(-(k**2))
 
@@ -77,7 +77,7 @@ def ep_greedy(qvals, actions, variation, temp_rel, ep=1.):
         inda = near_random(qvals, ep, variation, temp_rel)
     else:
         inda = greedy(qvals)
-    return inda,actions[inda]
+    return inda, actions[inda]
 
 def give_outcome(hidden_phase, beta, alpha=0.4):
     """

@@ -1,12 +1,24 @@
 import numpy as np
 from scipy.optimize import dual_annealing
-from utils import p
+import os
+import sys
+path = "Model_Semi_aware/"
+sys.path.insert(0, os.getcwd())
+from qrec.utils import p
 import matplotlib.pyplot as plt
+
 def Probability(alpha, sign, beta, observations):
     prob = np.float64(1.0)
     for i in range(len(sign)):
         prob *= (p(alpha * sign[i] + beta[i], observations[i]) ** (1/len(sign)))
     return 1 - prob
+
+def Find_optimal_intensity(states, betas, observations):
+    bounds = [[0, 2]]
+    prediction = dual_annealing(Probability, bounds, args=(states, betas, observations))
+
+    return prediction.x[0]
+
 
 def experiments(alpha, duration):
     observations = []
