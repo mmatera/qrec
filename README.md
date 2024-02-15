@@ -14,7 +14,7 @@ All the data from the experiment is going to be saved in a dictionary "details".
 
 "experience" -> Each element contains the beta used, the observation, the maximum likelihood election and the reward obtained.
 
-"Ps_greedy":[], -> $${\color{red}Red}$$
+"Ps_greedy":[], -> <span style="color:orange;">Word up</span>
 - No estoy seguro, tiene que ver con la mejor respuesta posible.
 
 
