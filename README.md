@@ -27,4 +27,11 @@ To start we have to define this dictionary or load it from a .pickle file. After
 
 # How the code works
 
-The full code containing how the script works is inside the folder "qrec", specifically in the folder
+The full skeleton of the script is inside the folder "qrec" in the files Stage_run.py and utils.py.
+
+## Stage_run.py
+
+The objective of this script is to run the experiment and following the hiperparameters save the values of interest and make the decisions.
+
+## Utils.py
+This is the backbone of the code, it is responsable for making the decisions given the observations and the parameters, returns what it considers random and makes the decisions for the Q-learning.
