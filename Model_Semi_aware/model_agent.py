@@ -27,16 +27,15 @@ seed = 0
 np.random.seed(seed)  # Use a fixed seed.
 
 # Set initial parameters
-N=int(5e5)
+N=int(1e5)
 alpha = 0.25
 details["alpha"] = [1.5,0.25]  # No estoy seguro para que es esto.
 
 np.random.seed(seed)
 
-#Hiperparameters: 0-Epsilon0, 1-delta_epsilon, 2-delta_learning_rate, 3-Dispersion_Random, 4-Temperature
-hiperparam = [0.05, 2.0, 1.0, 0.1, 10] 
-details["epsilon"] = 0.01
-details["mean_rewards"] = []
+#Hiperparameters: 0-Epsilon0, 1-delta_epsilon, 2-Dispersion_Random, 3-Temperature, 4-Initial learning rate
+hiperparam = [0.01, 5, 1, 100.0, 1000]
+details["ep"] = f"{0.01}"
 # Run the full program and get the new dictionary with the changes.
 details = Model_experiment(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam, N0=0)
 

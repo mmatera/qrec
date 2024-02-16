@@ -16,10 +16,7 @@ All the data from the experiment is going to be saved in a dictionary "details".
 
 "Ps_greedy", -> No estoy seguro, tiene que ver con la mejor respuesta posible.
 
-
 "seed" -> Seed used in the experiment.
-
-"epsilon" -> Initial value of epsilon
 
 "mean_rewards" -> list containing all the mean rewards during the experiment
 ```
