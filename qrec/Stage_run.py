@@ -39,15 +39,15 @@ def Reset_with_model(alpha, beta_grid, q0, q1, n0, n1, restart_value):
     for i in range(len(beta_grid)):
         vals = 0.5 * np.exp(-np.abs(-alpha - beta_grid[i])**2) +  0.5 * (1 - np.exp(-np.abs(alpha - beta_grid[i])**2))
         q0[i] = vals
-    alphap = 0.25
+
     for i in range(len(q1)):
         for j in range(len(q1[i])):
             if j == 0:
-                q1[i,j,0] = 1 - 0.5 * np.exp(-np.abs(-alphap - beta_grid[i])**2)
-                q1[i,j,1] = 1 - 0.5 * np.exp(-np.abs(alphap - beta_grid[i])**2)
+                q1[i,j,0] = 1 - 0.5 * np.exp(-np.abs(-alpha - beta_grid[i])**2)
+                q1[i,j,1] = 1 - 0.5 * np.exp(-np.abs(alpha - beta_grid[i])**2)
             if j == 1:
-                q1[i,j,0] = 1 - 0.5 * (1 - np.exp(-np.abs(-alphap - beta_grid[i])**2))
-                q1[i,j,1] = 1 - 0.5 * (1 - np.exp(-np.abs(alphap - beta_grid[i])**2))
+                q1[i,j,0] = 1 - 0.5 * (1 - np.exp(-np.abs(-alpha - beta_grid[i])**2))
+                q1[i,j,1] = 1 - 0.5 * (1 - np.exp(-np.abs(alpha - beta_grid[i])**2))
 
     epsilon = 0.2
     for i in range(len(n1)):
