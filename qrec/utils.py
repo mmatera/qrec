@@ -55,19 +55,20 @@ def greedy(arr):
     return np.random.choice(np.where( arr == np.max(arr))[0])
 
 # Makes a Gaussian distribution over the values with the current biggest success probabilities.
-def ProbabilityRandom(N, val, T, delta1):
+def ProbabilityRandom(N, val, maximum, T, delta1):
     # delta1 -> final variance related
     # T -> Initial variance related
-    k = delta1 * np.abs(-val) / (N * (1 + T))
+    k = delta1 * np.abs(maximum-val) / (N * (1 + T))
     return np.exp(-(k**2))
 
 # returns the index of the displacement choosed given the probability distribution. 
 def near_random(arr, ep, variation, temp_rel=10):
-    
+    maximum = max(arr)
     prob = []
     T = ep * temp_rel
+
     for i in range(len(arr)):
-        prob.append(ProbabilityRandom(len(arr), arr[i], T, variation))
+        prob.append(ProbabilityRandom(len(arr), arr[i], maximum, T, variation))
 
     for i in range(1, len(prob)):
         prob[i] = prob[i-1] + prob[i]
@@ -86,8 +87,9 @@ def ep_greedy(qvals, actions, variation, temp_rel, ep=1.):
     policy(q1, betas_grid)
     policy(q1[1,0,:], [0,1])
     """
-    if np.random.random() < ep:
-        #inda = np.random.choice(np.array(range(len(actions))))
+    if len(actions) == 2:
+        inda = np.random.choice(np.array(range(len(actions))))
+    elif np.random.random() < ep:
         inda = near_random(qvals, ep, variation, temp_rel)
     else:
         inda = greedy(qvals)

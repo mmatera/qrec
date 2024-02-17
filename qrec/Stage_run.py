@@ -11,9 +11,11 @@ Hiperparameters:
 """
 
 # How the q-learning parameters update.
-def updates(indb, n, g, r, q0, q1, n0, n1, lr=0.001):
+def updates(indb, n, g, r, q0, q1, n0, n1, lr=0.003):
     q1[indb, n, g]+= (1/n1[indb,n,g])*(r - q1[indb, n, g])
     q0[indb]+= (1/n0[indb])*np.max([q1[indb, n, g] for g in [0,1]] - q0[indb])
+    #q1[indb, n, g]+= lr*(r - q1[indb, n, g])
+    #q0[indb]+= lr*np.max([q1[indb, n, g] for g in [0,1]] - q0[indb])
     n0[indb]+= 1
     n1[indb,n,g]+= 1
     return q0, q1, n0, n1
@@ -33,12 +35,21 @@ def Update_reload(n0, n1, epsilon, mean_rew, restart_point):
     return n0, n1, epsilon
 
 # How to reload if you have a model.
-def Reset_with_model(alpha, beta_grid, q0, n0, n1, restart_value):
+def Reset_with_model(alpha, beta_grid, q0, q1, n0, n1, restart_value):
     for i in range(len(beta_grid)):
         vals = 0.5 * np.exp(-np.abs(-alpha - beta_grid[i])**2) +  0.5 * (1 - np.exp(-np.abs(alpha - beta_grid[i])**2))
         q0[i] = vals
-    
-    epsilon = 0.01
+    alphap = 0.25
+    for i in range(len(q1)):
+        for j in range(len(q1[i])):
+            if j == 0:
+                q1[i,j,0] = 1 - 0.5 * np.exp(-np.abs(-alphap - beta_grid[i])**2)
+                q1[i,j,1] = 1 - 0.5 * np.exp(-np.abs(alphap - beta_grid[i])**2)
+            if j == 1:
+                q1[i,j,0] = 1 - 0.5 * (1 - np.exp(-np.abs(-alphap - beta_grid[i])**2))
+                q1[i,j,1] = 1 - 0.5 * (1 - np.exp(-np.abs(alphap - beta_grid[i])**2))
+
+    epsilon = 0.2
     for i in range(len(n1)):
         n0[i] = restart_value
         for j in range(len(n1[i])):
@@ -103,7 +114,7 @@ def Model_experiment(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam =
     means = []
     mean_rew = 0
 
-    model_tries = 500
+    model_tries = 1000
     delta_guess = 0.4
     guessed_intensity = 0
     exp_vals = {"Phase":[], "Betas":[], "Observations":[]}
@@ -127,7 +138,6 @@ def Model_experiment(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam =
             points[1] = mean_rew
             mean_deriv = (points[1] - points[0]) / delta1
             if mean_deriv <= -0.4/delta1 and n0[indb] > 300:
-                #n0, n1, epsilon = Update_reload(n0, n1, epsilon, mean_rew, hiperparam[4])
                 Checked = True
 
         if Checked:
@@ -135,12 +145,12 @@ def Model_experiment(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam =
             exp_vals["Betas"].append(b)
             exp_vals["Observations"].append(n)
             if len(exp_vals["Phase"]) >= model_tries:
-                guessed_intensity = Find_optimal_intensity(exp_vals["Phase"], exp_vals["Betas"], exp_vals["Observations"])
+                #guessed_intensity = Find_optimal_intensity(exp_vals["Phase"], exp_vals["Betas"], exp_vals["Observations"])
                 guessed_intensity = 0.3
-                print(guessed_intensity)
+                #print(guessed_intensity)
                 if np.abs(guessed_intensity - current) > 0.3:
                     current = guessed_intensity
-                    q0, epsilon, n0 = Reset_with_model(current, betas_grid, q0, n0, n1, hiperparam[4])
+                    q0, epsilon, n0 = Reset_with_model(current, betas_grid, q0, q1, n0, n1, hiperparam[4])
                 Checked = False
                 exp_vals["Phase"] = []
                 exp_vals["Betas"] = []
@@ -155,4 +165,5 @@ def Model_experiment(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam =
     end = time.time() - start
     details["total_time"] = end
     details["ep"] = f"{epsilon}"
+    print(n0)
     return details

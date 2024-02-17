@@ -27,24 +27,27 @@ seed = 0
 np.random.seed(seed)  # Use a fixed seed.
 
 # Set initial parameters
-N=int(1e5)
+N=int(5e4)
 alpha = 0.25
 details["alpha"] = [1.5,0.25]  # No estoy seguro para que es esto.
 
 np.random.seed(seed)
 
 #Hiperparameters: 0-Epsilon0, 1-delta_epsilon, 2-Dispersion_Random, 3-Temperature, 4-Initial learning rate
-hiperparam = [0.01, 5, 1, 100.0, 1000]
+hiperparam = [0.1, 5, 25, 0.0, 50]
 details["ep"] = f"{0.01}"
 # Run the full program and get the new dictionary with the changes.
-details = Model_experiment(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam, N0=0)
+for i in range(0, 1):
+    details["seed"] = np.random.uniform(0, 1)
+    details = Model_experiment(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam, N0=0)
 
-plt.plot(details["mean_rewards"])
-plt.show()
+    #plt.plot(details["mean_rewards"])
+    #plt.show()
 
-values = probability(0.25, betas_grid)
-plt.plot(betas_grid, q0, label='predicted')
-plt.plot(betas_grid, values, label='theory')
+    values = probability(0.25, betas_grid)
+    plt.plot(betas_grid, q0)
+
+plt.plot(betas_grid, values, label='theory', color="black")
 plt.legend()
 plt.show()
 
