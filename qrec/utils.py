@@ -87,9 +87,7 @@ def ep_greedy(qvals, actions, variation, temp_rel, ep=1.):
     policy(q1, betas_grid)
     policy(q1[1,0,:], [0,1])
     """
-    if len(actions) == 2:
-        inda = np.random.choice(np.array(range(len(actions))))
-    elif np.random.random() < ep:
+    if np.random.random() < ep:
         inda = near_random(qvals, ep, variation, temp_rel)
     else:
         inda = greedy(qvals)

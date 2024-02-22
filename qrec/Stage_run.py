@@ -11,7 +11,7 @@ Hiperparameters:
 """
 
 # How the q-learning parameters update.
-def updates(indb, n, g, r, q0, q1, n0, n1, lr=0.003):
+def updates(indb, n, g, r, q0, q1, n0, n1, lr=0.001):
     q1[indb, n, g]+= (1/n1[indb,n,g])*(r - q1[indb, n, g])
     q0[indb]+= (1/n0[indb])*np.max([q1[indb, n, g] for g in [0,1]] - q0[indb])
     #q1[indb, n, g]+= lr*(r - q1[indb, n, g])
@@ -42,14 +42,10 @@ def Reset_with_model(alpha, beta_grid, q0, q1, n0, n1, restart_value):
 
     for i in range(len(q1)):
         for j in range(len(q1[i])):
-            if j == 0:
-                q1[i,j,0] = 1 - 0.5 * np.exp(-np.abs(-alpha - beta_grid[i])**2)
-                q1[i,j,1] = 1 - 0.5 * np.exp(-np.abs(alpha - beta_grid[i])**2)
-            if j == 1:
-                q1[i,j,0] = 1 - 0.5 * (1 - np.exp(-np.abs(-alpha - beta_grid[i])**2))
-                q1[i,j,1] = 1 - 0.5 * (1 - np.exp(-np.abs(alpha - beta_grid[i])**2))
+            for k in range(len(q1[i, j])):
+                q1[i,j,k] = p((-1)**(k+1) * alpha - beta_grid[i], j) / (p(-alpha - beta_grid[i], j) + p(alpha - beta_grid[i], j))
 
-    epsilon = 0.2
+    epsilon = 0.01
     for i in range(len(n1)):
         n0[i] = restart_value
         for j in range(len(n1[i])):
@@ -147,7 +143,7 @@ def Model_experiment(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam =
             if len(exp_vals["Phase"]) >= model_tries:
                 #guessed_intensity = Find_optimal_intensity(exp_vals["Phase"], exp_vals["Betas"], exp_vals["Observations"])
                 guessed_intensity = 0.3
-                #print(guessed_intensity)
+                print(guessed_intensity)
                 if np.abs(guessed_intensity - current) > 0.3:
                     current = guessed_intensity
                     q0, epsilon, n0 = Reset_with_model(current, betas_grid, q0, q1, n0, n1, hiperparam[4])
