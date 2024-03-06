@@ -1,17 +1,22 @@
-import numpy as np
-from scipy.optimize import dual_annealing
 import os
 import sys
+
+import numpy as np
+from scipy.optimize import dual_annealing
+
 path = "Model_Semi_aware/"
 sys.path.insert(0, os.getcwd())
-from qrec.utils import p
 import matplotlib.pyplot as plt
+
+from qrec.utils import p
+
 
 def Probability(alpha, sign, beta, observations):
     prob = np.float64(1.0)
     for i in range(len(sign)):
-        prob *= (p(alpha * sign[i] + beta[i], observations[i]) ** (1/len(sign)))
+        prob *= p(alpha * sign[i] + beta[i], observations[i]) ** (1 / len(sign))
     return 1 - prob
+
 
 def Find_optimal_intensity(states, betas, observations):
     bounds = [[0, 2]]
@@ -26,7 +31,7 @@ def experiments(alpha, duration):
     states = []
     for i in range(duration):
         beta = np.random.uniform(0, 1)
-        state = ((-1) ** np.random.randint(0, 2))
+        state = (-1) ** np.random.randint(0, 2)
 
         if np.random.uniform(0, 1) < p(state * alpha + beta, 0):
             observations.append(0)
@@ -35,7 +40,6 @@ def experiments(alpha, duration):
         betas.append(beta)
         states.append(state)
     return observations, states, betas
-
 
 
 if __name__ == "__main__":
@@ -48,7 +52,9 @@ if __name__ == "__main__":
         duration = i + 1
         observations, states, betas = experiments(alpha, duration)
         bounds = [[0, 2]]
-        prediction = dual_annealing(Probability, bounds, args=(states, betas, observations))
+        prediction = dual_annealing(
+            Probability, bounds, args=(states, betas, observations)
+        )
         results.append(prediction.x[0])
     x = np.linspace(0, max_experiments, max_experiments)
 

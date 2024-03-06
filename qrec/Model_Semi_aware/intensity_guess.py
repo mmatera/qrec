@@ -1,10 +1,14 @@
-import numpy as np
 import os
 import sys
+
+import numpy as np
+
 path = "Model_Semi_aware/"
 sys.path.insert(0, os.getcwd())
-from qrec.utils import p
 import matplotlib.pyplot as plt
+
+from qrec.utils import p
+
 
 def experiments(alpha, duration):
     observations = []
@@ -14,6 +18,7 @@ def experiments(alpha, duration):
         else:
             observations.append(1)
     return observations
+
 
 if __name__ == "__main__":
     alpha = 0.5  # This is not accessible in the experiment
@@ -29,8 +34,7 @@ if __name__ == "__main__":
             int_med += observations[i]
             int_med /= i + 1
             if int_med != 1:
-                results.append(np.sqrt(-np.log(1 - int_med)))        
-        
+                results.append(np.sqrt(-np.log(1 - int_med)))
 
         x = np.linspace(tot_experiments - len(results), tot_experiments, len(results))
 
