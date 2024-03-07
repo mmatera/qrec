@@ -1,40 +1,50 @@
-"""
-Utils
-"""
-
-# import os
-# import pickle
-# import time
-
-# import matplotlib.pyplot as plt
 import numpy as np
-# from numba import jit
+import matplotlib.pyplot as plt
 from scipy.optimize import minimize
-# from tqdm import tqdm
-
+from tqdm import tqdm
+import scipy as sp
+import time
+import pickle
+import os
+from numba import jit
 
 # Probability of observing 0 or 1.
-def probability_distribution(alpha: float, n: int):
+def p(alpha, beta, lambd, n):
     """
     p(n|alpha), born rule
     """
-    pr = np.exp(-((alpha) ** 2))
-    return [pr, 1 - pr][n]
+    pr = np.exp(-np.abs(alpha + (beta * (1 + lambd)))**2)
+    return [pr, 1-pr][n]
 
+def p_model(alpha, beta, n):
+    """
+    p(n|alpha), born rule
+    """
+    pr = np.exp(-np.abs(alpha + beta)**2)
+    return [pr, 1-pr][n]
 
-# Error probability.
-def error_probability(beta, alpha=0.4):
+def Perr(beta,alpha=0.4, lambd=0.0):
     """
-    Error probability given beta and alpha
+    Error probability given beta, alpha and noise lambd
     """
-    ps = 0
+    ps=0
+    p_sign = [0.5, 0.5]
     for n in range(2):
-        ps += np.max([probability_distribution(sgn * alpha + beta, n) for sgn in [-1, 1]])
-    return 1 - ps / 2
+        ps+=np.max([p(sgn*alpha, beta, lambd, n) * p_sign[ind] for ind,sgn in enumerate([-1,1])])
+    return 1-ps
+
+def Perr_model(beta,alpha=0.4):
+    """
+    Error probability given by the model used.
+    """
+    ps=0
+    for n in range(2):
+        ps+=np.max([p_model(sgn*alpha, beta, n) for ind,sgn in enumerate([-1,1])])
+    return 1-ps/2
 
 
 # Theoretical limit calculation.
-def model_aware_optimal(betas_grid, alpha=0.4):
+def model_aware_optimal(betas_grid, alpha=0.4, lambd=0.0):
     """
     Find the optimal parameters that minimize
     `error_probability`
@@ -58,17 +68,14 @@ def model_aware_optimal(betas_grid, alpha=0.4):
 
     """
     # Landscape inspection
-    mmin = minimize(
-        error_probability,
-        x0=-alpha, args=(alpha), bounds=[(np.min(betas_grid), np.max(betas_grid))]
-    )
+
+    mmin = minimize(Perr, x0=-alpha, args=(alpha, lambd),bounds = [(np.min(betas_grid), np.max(betas_grid))])
     p_star = mmin.fun
     beta_star = mmin.x
     return mmin, p_star, beta_star
 
-
 # Add a value for the mean reward using delta1 values.
-def calculate_mean_rew(means: list, mean_rew: float, r: float, max_len: int):
+def calculate_mean_rew(means, mean_rew, r, max_len):
     """
     Compute the mean reward from the previous values and
     the new reward.
@@ -92,25 +99,17 @@ def calculate_mean_rew(means: list, mean_rew: float, r: float, max_len: int):
         DESCRIPTION.
 
     """
-    # Este código parece querer hacer lo mismo que
-    #     means_rew = np.average(means)
-    # pero usando el promedio anterior para ahorrarse 
-    # las sumas. ¿Realmente se gana tanto?
-    
-    means_sum = mean_rew *len(means) + r
+        
     means.append(r)
-    means_len = len(means)
-    mean_rew = means_sum / means_len 
-    
-    if means_len > max_len:
+    mean_rew = np.average(mean_rew)
+        
+    if len(means) > max_len:
         means = means[-max_len:]
+    return means, mean_rew
 
-    
-    return means,  means_rew
-
-
-# Q-Learning approach
+####   Q-Learning approach
 def define_q(nbetas=10):
+
     """
     Generate the initial structures for the Q-learning
     approach.
@@ -130,15 +129,14 @@ def define_q(nbetas=10):
     """
 
     betas_grid = np.linspace(-2, 0, nbetas)
-    q0 = np.zeros(betas_grid.shape[0])  # Q(beta)
-    q1 = np.zeros((betas_grid.shape[0], 2, 2))  # Q(beta,n; g)
-    n0 = np.ones(betas_grid.shape[0])  # Q(beta)
-    n1 = np.ones((betas_grid.shape[0], 2, 2))  # Q(beta,n; g)
-    return betas_grid, [q0, q1, n0, n1]
-
+    q0 = np.zeros(betas_grid.shape[0])  #Q(beta)
+    q1 = np.zeros((betas_grid.shape[0],2,2)) # Q(beta,n; g)
+    n0 = np.ones(betas_grid.shape[0])  #Q(beta)
+    n1 = np.ones((betas_grid.shape[0],2,2)) # Q(beta,n; g)
+    return betas_grid, [q0, q1,n0,n1]
 
 # Choose the point with the bigger success probability.
-def greedy(arr: np.ndarray):
+def greedy(arr):
     """
     Pick a random element from arr. If the element
     is the maximum value of arr, return 1. Otherwise,
@@ -155,12 +153,10 @@ def greedy(arr: np.ndarray):
         1 if the choosen element is a maximum. 0 otherwize.
     """
 
-    return np.random.choice(np.where(arr == np.max(arr))[0])
+    return np.random.choice(np.where( arr == np.max(arr))[0])
 
-
-# Makes a Gaussian distribution over the values with
-# the current biggest success probabilities.
-def ProbabilityRandom(N, val, maximum, T, delta1):
+# Makes a Gaussian distribution over the values with the current biggest success probabilities.
+def ProbabilityRandom(val, maximum, delta1):
     """
     Parameters
     ----------
@@ -170,10 +166,8 @@ def ProbabilityRandom(N, val, maximum, T, delta1):
         value / values where the gaussian is evaluated.
     maximum : float
         Center of the gaussian
-    T : float
-        Initial variance related.
     delta1 : float
-        final variance related.
+        variance related.
 
     Returns
     -------
@@ -181,71 +175,37 @@ def ProbabilityRandom(N, val, maximum, T, delta1):
         The gaussian function evaluated over val.
 
     """
-
-    k = delta1 * np.abs(maximum - val) / (N * (1 + T))
+    k = delta1 * (maximum-val)
     return np.exp(-(k**2))
 
 
-# returns the index of the displacement choosen,
-#  given the probability distribution.
-def near_random(arr, ep, variation, temp_rel=10):
+def near_random(q0, delta1):
     """
     return an index according the probability 
     distribution described by arr
 
     Parameters
     ----------
-    arr : TYPE
-        DESCRIPTION.
-    ep : TYPE
-        DESCRIPTION.
-    variation : TYPE
-        DESCRIPTION.
-    temp_rel : TYPE, optional
-        DESCRIPTION. The default is 10.
+    q0 : TYPE
+        Experimentally calculated success probability for each point.
+    delta1 : TYPE
+        Dispersion for the random values.
 
     Returns
     -------
     i : TYPE
-        DESCRIPTION.
+        index of the action taken.
 
     """
+    maximum = max(q0)
+    weight = np.array([ProbabilityRandom(q0[i], maximum, delta1) for i in range(len(q0))])
+    weight[list(q0).index(maximum)] = 0
+    weight /= np.cumsum(weight)[-1]
 
-    maximum = max(arr)
-    arr_len = len(arr)
-    prob = []
-    T = ep * temp_rel
-    
-    # Comentario: Acá entiendo que querés una 
-    # distribución de probabilidad
-    # para arr de manera que sus valores se distribuyan como
-    # una gaussiana centrada en el máximo de arr,
-    # y con ancho  `variation`.
-    # Fijate porque me parece que esto no está bien.
-    
-    for i,arr_i in enumerate(arr):
-        prob.append(ProbabilityRandom(arr_len,
-                                      arr_i, 
-                                      maximum,
-                                      T, 
-                                      variation))
-    
-    # Cumulative Probability Distribution
-    cum_distribution = np.cumsum(prob)
-    cum_distribution /= cum_distribution[-1]
-    
-    # numpy tiene la función randomchoice,
-    # a la que le podés pasar una distribución
-    # de probabilidad...
-    random = np.random.uniform(0, 1)
-    for i in range(arr_len):
-        if random <= prob[i]:
-            return i
-    return prob[-1]
-
+    return np.random.choice([i for i in range(len(q0))], p=weight)
 
 # Decides if running a random displacement or the one with the bigger reward.
-def ep_greedy(qvals, actions, variation, temp_rel, ep=1.0):
+def ep_greedy(qvals, actions, delta1, ep=1.):
     """
     Decide if running a random
     displacement or the one with the biggest reward.
@@ -254,33 +214,27 @@ def ep_greedy(qvals, actions, variation, temp_rel, ep=1.0):
     policy(q1[1,0,:], [0,1])
     """
     if np.random.random() < ep:
-        inda = near_random(qvals, ep, variation, temp_rel)
+        inda = near_random(qvals, delta1)
     else:
         inda = greedy(qvals)
     return inda, actions[inda]
 
-
 # Experiment.
-def give_outcome(hidden_phase, beta, alpha=0.4):
+def give_outcome(hidden_phase, beta, alpha=0.4, lambd=0.0):
     """
     hidden_phase in {0,1}
     """
-    return np.random.choice(
-        np.array([0, 1]),
-        [probability_distribution(alpha * (-1) ** hidden_phase +
-                     beta, n) for n in [0, 1]]
-    )
-
+    return np.random.choice(np.array([0,1]), p= [p(alpha*(-1)**hidden_phase, beta, lambd, n) for n in [0,1]])
 
 # reward. 1 -> correct. 0 -> incorrect
-def give_reward(g, hidden_phase) -> int:
+def give_reward(g, hidden_phase):
     """
 
     Parameters
     ----------
-    g : TYPE
+    g : int
         DESCRIPTION.
-    hidden_phase : TYPE
+    hidden_phase : int
         DESCRIPTION.
 
     Returns
@@ -289,12 +243,12 @@ def give_reward(g, hidden_phase) -> int:
         1. if g == hidden_phase, 0 otherwise
     """
     if int(g) == int(hidden_phase):
-        return 1.0
+        return 1.
+    else:
+        return 0.
 
-    return 0.0
 
-
-def Psq(q0, q1, betas_grid, variation, temp_rel, alpha=0.4):
+def Psq(q0,q1,betas_grid, delta1, alpha=0.4, lambd=0.0):
     """
 
     Parameters
@@ -318,9 +272,9 @@ def Psq(q0, q1, betas_grid, variation, temp_rel, alpha=0.4):
         DESCRIPTION.
 
     """
-    ps = 0
-    indb, b = ep_greedy(q0, betas_grid, variation, temp_rel, ep=0)
+    ps=0
+    indb, b = ep_greedy(q0, betas_grid, delta1, ep=0)
     for n in range(2):
-        indg, g = ep_greedy(q1[indb, n, :], [0, 1], variation, temp_rel, ep=0)
-        ps += probability_distribution(alpha * (-1) ** g + b, n)
-    return ps / 2
+        indg, g = ep_greedy(q1[indb,n,:], [0,1], delta1, ep=0)
+        ps+=p(alpha*(-1)**g, b, lambd,n)
+    return ps/2
