@@ -78,8 +78,8 @@ def Run_Experiment(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam = [
         if experiment % delta1 == 0:
             points[0] = points[1]
             points[1] = mean_rew
-            mean_deriv = (points[1] - points[0]) / delta1
-            if mean_deriv <= -0.4/delta1 and n0[indb] > 300:
+            mean_deriv = points[1] - points[0]
+            if mean_deriv <= -0.4 and n0[indb] > 300:
                 n0, n1, epsilon = Update_reload(n0, n1, mean_rew, hiperparam[3], hiperparam[0])
                 Checked = True
 
