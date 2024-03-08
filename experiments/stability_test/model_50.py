@@ -26,7 +26,7 @@ for i in range(amount_vals):
     # Set initial parameters
     N=int(5e4)
     alpha = 0.25
-    lambd = 0.75
+    lambd = 0.1
     min, pstar, bstar = model_aware_optimal(betas_grid, alpha=alpha, lambd=lambd)
 
     details["alpha"] = [1.5, 0.25]  # No estoy seguro para que es esto.
@@ -36,7 +36,7 @@ for i in range(amount_vals):
     #Hiperparameters: 0-Epsilon0, 1-delta_epsilon, 2-Dispersion_Random, 3-Learning reset
     hiperparam = [1, 2/int(5e4), 25, 250]
     # Run the full program and get the new dictionary with the changes.
-    details = Run_Experiment(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam, lambd=lambd, model=True)
+    details = Run_Experiment(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam, lambd=lambd, model=True, noise_type=1)
     
     # Plots
     stacked_history = np.stack(details["experience"])
@@ -57,3 +57,5 @@ plt.savefig(path+"model_images/q0.png")
 #ax.set_xscale("log")
 #ax.legend()
 #plt.savefig(path+"model_images/betas.png")
+
+
