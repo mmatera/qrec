@@ -67,13 +67,46 @@ def Experiment_noise_2(q0, q1, betas_grid, hiperparam, epsilon, alpha, lambd):
 
 
 # Exactly the same but checks with model to update initial parameters.
-def Run_Experiment(details, N, q0, q1, n0, n1, betas_grid, alpha, hiperparam = [], delta1= 1000, current=1.5, lambd=0.0, model=True, noise_type=None):
+def Run_Experiment(details, N, alpha, hiperparam = [], delta1= 1000, current=1.5, lambd=0.0, model=True, noise_type=None):
+    """
+    Makes the experiment and updates the decision of the agent.
+
+    Parameters
+    ----------
+    details : dictionary
+        All the information about the agent parameters and the previous experiments.
+    N : int
+        Amount of states use for the training.
+    alpha : float
+        Intensity of the state used in the experiment.
+    hiperparam: list
+        Hiperparameters used for the Q-learning algorithm.
+    delta1: int
+        Amount of rewards used to calculate the mean value.
+    current: float.
+        intensity predicted for the model previously.
+    lambd: float
+        Amount of unkwnown noise. 0.0 meaning that there is no extra noise in the channel.
+    model: bool
+        True if the agent can use a model to predict initial values, False otherwise.
+    noise_type: int
+        1 -> change in the expected displacement, 2 -> change in the prior.
+
+
+    Returns
+    -------
+    details: dictionary.
+        All the information about the agent parameters and the previous experiments.
+
+    """
     start = time.time()
     mean_rew = float(details["mean_rewards"][-1])
     points = [mean_rew, float(details["mean_rewards"][-2])]
     means = details["means"]
+    q0, q1, n0, n1 = details["tables"]
+    betas_grid = details["betas"]
     
-    guessed_intensity = 0  # Could be initialized with the previous value but there is no reason...
+    guessed_intensity = current
     epsilon = float(details["ep"])
     Checked = False
 
