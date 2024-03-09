@@ -1,12 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.optimize import minimize
-from tqdm import tqdm
-import scipy as sp
-import time
-import pickle
-import os
-from numba import jit
 
 # Probability of observing 0 or 1.
 def p(alpha, beta, lambd, n):
@@ -23,14 +16,22 @@ def p_model(alpha, beta, n):
     pr = np.exp(-np.abs(alpha + beta)**2)
     return [pr, 1-pr][n]
 
-def Perr(beta,alpha=0.4, lambd=0.0):
+def Perr(beta,alpha=0.4, lambd=0.0, noise_type = 1):
     """
     Error probability given beta, alpha and noise lambd
+    noise_type : int
+                1 -> Change in the value of beta.  2 -> Change in the prior.
     """
-    ps=0
-    p_sign = [0.5, 0.5]
-    for n in range(2):
-        ps+=np.max([p(sgn*alpha, beta, lambd, n) * p_sign[ind] for ind,sgn in enumerate([-1,1])])
+    if noise_type == 1:
+        ps=0
+        p_sign = [0.5, 0.5]
+        for n in range(2):
+            ps+=np.max([p(sgn*alpha, beta, lambd, n) * p_sign[ind] for ind,sgn in enumerate([-1,1])])
+    if noise_type == 2:
+        ps=0
+        p_sign = [0.5 + lambd, 0.5 - lambd]
+        for n in range(2):
+            ps+=np.max([p(sgn*alpha, beta, 0, n) * p_sign[ind] for ind,sgn in enumerate([-1,1])])
     return 1-ps
 
 def Perr_model(beta,alpha=0.4):
@@ -44,7 +45,7 @@ def Perr_model(beta,alpha=0.4):
 
 
 # Theoretical limit calculation.
-def model_aware_optimal(betas_grid, alpha=0.4, lambd=0.0):
+def model_aware_optimal(betas_grid, alpha=0.4, lambd=0.0, noise_type=1):
     """
     Find the optimal parameters that minimize
     `error_probability`
@@ -69,7 +70,7 @@ def model_aware_optimal(betas_grid, alpha=0.4, lambd=0.0):
     """
     # Landscape inspection
 
-    mmin = minimize(Perr, x0=-alpha, args=(alpha, lambd),bounds = [(np.min(betas_grid), np.max(betas_grid))])
+    mmin = minimize(Perr, x0=-alpha, args=(alpha, lambd, noise_type),bounds = [(np.min(betas_grid), np.max(betas_grid))])
     p_star = mmin.fun
     beta_star = mmin.x
     return mmin, p_star, beta_star
@@ -101,7 +102,7 @@ def calculate_mean_rew(means, mean_rew, r, max_len):
     """
         
     means.append(r)
-    mean_rew = np.average(mean_rew)
+    mean_rew = np.average(means)
         
     if len(means) > max_len:
         means = means[-max_len:]
