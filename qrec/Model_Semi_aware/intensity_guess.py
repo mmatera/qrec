@@ -3,28 +3,47 @@ import sys
 
 import numpy as np
 
-path = "Model_Semi_aware/"
-sys.path.insert(0, os.getcwd())
+
 import matplotlib.pyplot as plt
+from np.random import choice
+
+sys.path.insert(0, os.getcwd())
 
 from qrec.utils import p
 
 
+path = "Model_Semi_aware/"
+
+
 def experiments(alpha, duration):
-    observations = []
-    for i in range(duration):
-        if np.random.uniform(0, 1) < p(alpha, 0):
-            observations.append(0)
-        else:
-            observations.append(1)
-    return observations
+    """
+    A list of 0 and 1 distributed according to
+    p(x|alpha).
+
+    alpha: float
+        parameter of the distribution
+
+    duration:
+        the size of the list
+    """
+    prob_0 = p(alpha, 0)
+    return choice(
+        (
+            0,
+            1,
+        ),
+        size=duration,
+        p=prob_0,
+    )
 
 
-if __name__ == "__main__":
+def main():
+    """Main loop"""
+
     alpha = 0.5  # This is not accessible in the experiment
-    quantity = 10
-    for j in range(quantity):
-        print(j)
+    independent_experiments = 10
+    for j in range(independent_experiments):
+        print("Experiment j")
         results = []
         tot_experiments = 500
         observations = experiments(alpha, tot_experiments)
@@ -38,9 +57,14 @@ if __name__ == "__main__":
 
         x = np.linspace(tot_experiments - len(results), tot_experiments, len(results))
 
-        plt.plot(x, results)
+        plt.plot(x, results, label=f"Experiment {j}")
     plt.axhline(alpha, color="black")
     plt.ylabel("prediction")
     plt.xlabel("experiments used")
     plt.legend()
     plt.show()
+    return -1
+
+
+if __name__ == "__main__":
+    exit(main())

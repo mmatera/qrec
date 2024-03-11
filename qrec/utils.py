@@ -2,46 +2,61 @@ import numpy as np
 from scipy.optimize import minimize
 
 # Probability of observing 0 or 1.
+
+
 def p(alpha, beta, lambd, n):
     """
     p(n|alpha), born rule
     """
-    pr = np.exp(-np.abs(alpha + (beta * (1 + lambd)))**2)
-    return [pr, 1-pr][n]
+    pr = np.exp(-np.abs(alpha + (beta * (1 + lambd))) ** 2)
+    return [pr, 1 - pr][n]
+
 
 def p_model(alpha, beta, n):
     """
     p(n|alpha), born rule
     """
-    pr = np.exp(-np.abs(alpha + beta)**2)
-    return [pr, 1-pr][n]
+    pr = np.exp(-np.abs(alpha + beta) ** 2)
+    return [pr, 1 - pr][n]
 
-def Perr(beta,alpha=0.4, lambd=0.0, noise_type = 1):
+
+def Perr(beta, alpha=0.4, lambd=0.0, noise_type=1):
     """
     Error probability given beta, alpha and noise lambd
     noise_type : int
                 1 -> Change in the value of beta.  2 -> Change in the prior.
     """
     if noise_type == 1:
-        ps=0
+        ps = 0
         p_sign = [0.5, 0.5]
         for n in range(2):
-            ps+=np.max([p(sgn*alpha, beta, lambd, n) * p_sign[ind] for ind,sgn in enumerate([-1,1])])
+            ps += np.max(
+                [
+                    p(sgn * alpha, beta, lambd, n) * p_sign[ind]
+                    for ind, sgn in enumerate([-1, 1])
+                ]
+            )
     if noise_type == 2:
-        ps=0
+        ps = 0
         p_sign = [0.5 + lambd, 0.5 - lambd]
         for n in range(2):
-            ps+=np.max([p(sgn*alpha, beta, 0, n) * p_sign[ind] for ind,sgn in enumerate([-1,1])])
-    return 1-ps
+            ps += np.max(
+                [
+                    p(sgn * alpha, beta, 0, n) * p_sign[ind]
+                    for ind, sgn in enumerate([-1, 1])
+                ]
+            )
+    return 1 - ps
 
-def Perr_model(beta,alpha=0.4):
+
+def Perr_model(beta, alpha=0.4):
     """
     Error probability given by the model used.
     """
-    ps=0
+    ps = 0
     for n in range(2):
-        ps+=np.max([p_model(sgn*alpha, beta, n) for ind,sgn in enumerate([-1,1])])
-    return 1-ps/2
+        ps += np.max([p_model(sgn * alpha, beta, n) for ind, sgn in enumerate([-1, 1])])
+    return 1 - ps / 2
 
 
 # Theoretical limit calculation.
@@ -70,12 +85,20 @@ def model_aware_optimal(betas_grid, alpha=0.4, lambd=0.0, noise_type=1):
     """
     # Landscape inspection
 
-    mmin = minimize(Perr, x0=-alpha, args=(alpha, lambd, noise_type),bounds = [(np.min(betas_grid), np.max(betas_grid))])
+    mmin = minimize(
+        Perr,
+        x0=-alpha,
+        args=(alpha, lambd, noise_type),
+        bounds=[(np.min(betas_grid), np.max(betas_grid))],
+    )
     p_star = mmin.fun
     beta_star = mmin.x
     return mmin, p_star, beta_star
 
+
 # Add a value for the mean reward using delta1 values.
+
+
 def calculate_mean_rew(means, mean_rew, r, max_len):
     """
     Compute the mean reward from the previous values and
@@ -100,17 +123,19 @@ def calculate_mean_rew(means, mean_rew, r, max_len):
         DESCRIPTION.
 
     """
-        
+
     means.append(r)
     mean_rew = np.average(means)
-        
+
     if len(means) > max_len:
         means = means[-max_len:]
     return means, mean_rew
 
-####   Q-Learning approach
-def define_q(nbetas=10):
 
+# Q-Learning approach
+
+
+def define_q(nbetas=10):
     """
     Generate the initial structures for the Q-learning
     approach.
@@ -130,13 +155,16 @@ def define_q(nbetas=10):
     """
 
     betas_grid = np.linspace(-2, 0, nbetas)
-    q0 = np.zeros(betas_grid.shape[0])  #Q(beta)
-    q1 = np.zeros((betas_grid.shape[0],2,2)) # Q(beta,n; g)
-    n0 = np.ones(betas_grid.shape[0])  #Q(beta)
-    n1 = np.ones((betas_grid.shape[0],2,2)) # Q(beta,n; g)
-    return betas_grid, [q0, q1,n0,n1]
+    q0 = np.zeros(betas_grid.shape[0])  # Q(beta)
+    q1 = np.zeros((betas_grid.shape[0], 2, 2))  # Q(beta,n; g)
+    n0 = np.ones(betas_grid.shape[0])  # Q(beta)
+    n1 = np.ones((betas_grid.shape[0], 2, 2))  # Q(beta,n; g)
+    return betas_grid, [q0, q1, n0, n1]
+
 
 # Choose the point with the bigger success probability.
+
+
 def greedy(arr):
     """
     Pick a random element from arr. If the element
@@ -154,9 +182,12 @@ def greedy(arr):
         1 if the choosen element is a maximum. 0 otherwize.
     """
 
-    return np.random.choice(np.where( arr == np.max(arr))[0])
+    return np.random.choice(np.where(arr == np.max(arr))[0])
+
 
 # Makes a Gaussian distribution over the values with the current biggest success probabilities.
+
+
 def ProbabilityRandom(val, maximum, delta1):
     """
     Parameters
@@ -176,13 +207,13 @@ def ProbabilityRandom(val, maximum, delta1):
         The gaussian function evaluated over val.
 
     """
-    k = delta1 * (maximum-val)
+    k = delta1 * (maximum - val)
     return np.exp(-(k**2))
 
 
 def near_random(q0, delta1):
     """
-    return an index according the probability 
+    return an index according the probability
     distribution described by arr
 
     Parameters
@@ -199,14 +230,19 @@ def near_random(q0, delta1):
 
     """
     maximum = max(q0)
-    weight = np.array([ProbabilityRandom(q0[i], maximum, delta1) for i in range(len(q0))])
+    weight = np.array(
+        [ProbabilityRandom(q0[i], maximum, delta1) for i in range(len(q0))]
+    )
     weight[list(q0).index(maximum)] = 0
     weight /= np.cumsum(weight)[-1]
 
     return np.random.choice([i for i in range(len(q0))], p=weight)
 
+
 # Decides if running a random displacement or the one with the bigger reward.
-def ep_greedy(qvals, actions, delta1, ep=1.):
+
+
+def ep_greedy(qvals, actions, delta1, ep=1.0):
     """
     Decide if running a random
     displacement or the one with the biggest reward.
@@ -220,14 +256,23 @@ def ep_greedy(qvals, actions, delta1, ep=1.):
         inda = greedy(qvals)
     return inda, actions[inda]
 
+
 # Experiment.
+
+
 def give_outcome(hidden_phase, beta, alpha=0.4, lambd=0.0):
     """
     hidden_phase in {0,1}
     """
-    return np.random.choice(np.array([0,1]), p= [p(alpha*(-1)**hidden_phase, beta, lambd, n) for n in [0,1]])
+    return np.random.choice(
+        np.array([0, 1]),
+        p=[p(alpha * (-1) ** hidden_phase, beta, lambd, n) for n in [0, 1]],
+    )
+
 
 # reward. 1 -> correct. 0 -> incorrect
+
+
 def give_reward(g, hidden_phase):
     """
 
@@ -244,12 +289,12 @@ def give_reward(g, hidden_phase):
         1. if g == hidden_phase, 0 otherwise
     """
     if int(g) == int(hidden_phase):
-        return 1.
+        return 1.0
     else:
-        return 0.
+        return 0.0
 
 
-def Psq(q0,q1,betas_grid, delta1, alpha=0.4, lambd=0.0):
+def Psq(q0, q1, betas_grid, delta1, alpha=0.4, lambd=0.0):
     """
 
     Parameters
@@ -273,9 +318,9 @@ def Psq(q0,q1,betas_grid, delta1, alpha=0.4, lambd=0.0):
         DESCRIPTION.
 
     """
-    ps=0
+    ps = 0
     indb, b = ep_greedy(q0, betas_grid, delta1, ep=0)
     for n in range(2):
-        indg, g = ep_greedy(q1[indb,n,:], [0,1], delta1, ep=0)
-        ps+=p(alpha*(-1)**g, b, lambd,n)
-    return ps/2
+        indg, g = ep_greedy(q1[indb, n, :], [0, 1], delta1, ep=0)
+        ps += p(alpha * (-1) ** g, b, lambd, n)
+    return ps / 2

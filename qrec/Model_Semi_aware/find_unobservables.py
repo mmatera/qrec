@@ -1,44 +1,86 @@
+"""
+find unobservables
+
+
+"""
+
+
 import os
 import sys
 
 import numpy as np
+import matplotlib.pyplot as plt
+from numpy.random import choice, uniform
 from scipy.optimize import dual_annealing
 
-path = "Model_Semi_aware/"
+PATH = "Model_Semi_aware/"
 sys.path.insert(0, os.getcwd())
-import matplotlib.pyplot as plt
-
-from qrec.utils import p
 
 
-def Probability(alpha, sign, beta, observations):
+from .utils import p
+
+
+def probability(alpha, signs, betas, observations):
+    """
+    Compute one minus the geometric mean of the probabilities
+    associated to a realization
+    of signs, betas an observations.
+    """
     prob = np.float64(1.0)
-    for i in range(len(sign)):
-        prob *= p(alpha * sign[i] + beta[i], observations[i]) ** (1 / len(sign))
+    exponent = 1.0 / len(signs)
+    for sign, beta, obs in zip(signs, betas, observations):
+        prob *= p(alpha * sign + beta, obs) ** exponent
     return 1 - prob
 
 
-def Find_optimal_intensity(states, betas, observations):
+def find_optimal_intensity(states, betas, observations):
+    """
+    Determine the optimal value of alpha to maximize
+    the geometric mean of the success probabilities.
+    """
     bounds = [[0, 2]]
-    prediction = dual_annealing(Probability, bounds, args=(states, betas, observations))
+    prediction = dual_annealing(probability, bounds, args=(states, betas, observations))
 
     return prediction.x[0]
 
 
 def experiments(alpha, duration):
-    observations = []
-    betas = []
-    states = []
-    for i in range(duration):
-        beta = np.random.uniform(0, 1)
-        state = (-1) ** np.random.randint(0, 2)
+    """
+    Simulate the results of a set of experiments
+    assuming alpha.
 
-        if np.random.uniform(0, 1) < p(state * alpha + beta, 0):
-            observations.append(0)
-        else:
-            observations.append(1)
-        betas.append(beta)
-        states.append(state)
+    alpha: float
+        the parameter of the distribution.
+    duration: int
+        the number of experiments.
+
+    return values
+    -------------
+
+    observations:
+
+
+    states: list[int]
+        a sequence of +/-1 uniformly distributed.
+
+    betas: list[float]
+        a sequence of float uniform random values
+
+
+
+    """
+
+    def prob_dist(x):
+        prob_0 = p(x, 0)
+        return (prob_0, 1 - prob_0)
+
+    betas = uniform(0, 1, duration)
+    states = choice([-1, 1], duration)
+    observations = [
+        choice([0, 1], p=prob_dist(state * alpha + beta))
+        for state, beta in zip(states, betas)
+    ]
+
     return observations, states, betas
 
 
@@ -53,7 +95,7 @@ if __name__ == "__main__":
         observations, states, betas = experiments(alpha, duration)
         bounds = [[0, 2]]
         prediction = dual_annealing(
-            Probability, bounds, args=(states, betas, observations)
+            probability, bounds, args=(states, betas, observations)
         )
         results.append(prediction.x[0])
     x = np.linspace(0, max_experiments, max_experiments)
