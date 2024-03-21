@@ -10,6 +10,12 @@ import matplotlib.pyplot as plt
 from qrec.utils import p
 
 
+def guess_intensity(alpha, delta1, lambd):
+    """Guess the intensity from the paramters"""
+    # TODO: Implement me
+    raise NonImplementedError
+
+
 def experiments(alpha, duration):
     observations = []
     for i in range(duration):
@@ -36,7 +42,9 @@ if __name__ == "__main__":
             if int_med != 1:
                 results.append(np.sqrt(-np.log(1 - int_med)))
 
-        x = np.linspace(tot_experiments - len(results), tot_experiments, len(results))
+        x = np.linspace(
+            tot_experiments - len(results), tot_experiments, len(results)
+        )
 
         plt.plot(x, results)
     plt.axhline(alpha, color="black")

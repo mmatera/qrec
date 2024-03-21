@@ -1,6 +1,19 @@
 import numpy as np
 from scipy.optimize import minimize
 
+
+# QLearningParms:
+# q0: ndarray
+#     q[beta]
+# q1: ndarray
+#     q[beta,n;g]
+# n0: ndarray
+#     q[beta]
+# n1: ndarray
+#     q[beta,n;g]
+QLearningParms = namedtuple("QLearningParms", ["q0", "q1", "n0", "n1"])
+
+
 # Probability of observing 0 or 1.
 def p(alpha, beta, lambd, n):
     """
@@ -153,8 +166,8 @@ def greedy(arr):
     int:
         1 if the choosen element is a maximum. 0 otherwize.
     """
-
-    return np.random.choice(np.where( arr == np.max(arr))[0])
+    max_value = np.max(arr)
+    return np.random.choice(np.where( arr == max_value)[0])
 
 # Makes a Gaussian distribution over the values with the current biggest success probabilities.
 def ProbabilityRandom(val, maximum, delta1):
