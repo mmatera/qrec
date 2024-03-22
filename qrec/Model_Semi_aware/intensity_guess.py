@@ -1,16 +1,3 @@
-import os
-import sys
-
-import numpy as np
-
-path = "Model_Semi_aware/"
-sys.path.insert(0, os.getcwd())
-import matplotlib.pyplot as plt
-
-from qrec.utils import p
-
-
-
 import numpy as np
 import os
 import sys
@@ -18,11 +5,11 @@ path = "Model_Semi_aware/"
 sys.path.insert(0, os.getcwd())
 from qrec.utils import p
 import matplotlib.pyplot as plt
+
 
 def guess_intensity(alpha, duration, lambd=0.0):
     """
     Estimates alpha from the results of previous experiments.
-
     """
     observations = np.random.choice([0,1], duration, p=[p(alpha, 0, lambd,  0), p(alpha, 0, lambd,  1)])
     p0 = 0
