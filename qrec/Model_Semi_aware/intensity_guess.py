@@ -6,8 +6,13 @@ sys.path.insert(0, os.getcwd())
 from qrec.utils import p
 import matplotlib.pyplot as plt
 
+
+
+
 def guess_intensity(alpha, duration, lambd=0.0):
-    observations = np.random.choice([0,1], duration, p=[p(alpha, 0, lambd,  0), p(alpha, 0, lambd,  1)])
+    observations = np.random.choice([0,1], duration, 
+                                    p=[p(alpha, 0, lambd,  0), 
+                                       p(alpha, 0, lambd,  1)])
     p0 = 0
     for i in range(duration):
         if observations[i] == 0:
