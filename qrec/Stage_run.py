@@ -49,19 +49,21 @@ Hyperparameters = namedtuple(
 
 
 # How the q-learning parameters update.
-def updates(indb, n, g, r, qlearning:QlearningParms, lr=0.001):
+def updates(indb, result, guess, reward, qlearning:QlearningParms, lr=0.001):
     """
-
+    Dado que se observó el índice indb, con resultado n,
+    y estimación previa g, se actualizan los valores
+    con una recompensa r y y learning rate lr.
 
     Parameters
     ----------
     indb : TYPE
-        DESCRIPTION.
-    n : TYPE
-        DESCRIPTION.
-    g : TYPE
-        DESCRIPTION.
-    r : TYPE
+        index choice 
+    result : TYPE
+        resultado de la observación actual.
+    guess : TYPE
+        clasificación estimada.
+    reward : TYPE
         DESCRIPTION.
     qlearning : QLarningParms
         current values of the learning parameters.
@@ -74,13 +76,15 @@ def updates(indb, n, g, r, qlearning:QlearningParms, lr=0.001):
         the new values of the learning parameters.
 
     """
+    # TODO: check if it is possible to update 1-g too.
+    n = result
     q0, q1, n0, n1 = qlearning
-    q1[indb, n, g] += (1 / n1[indb, n, g]) * (r - q1[indb, n, g])
+    q1[indb, n, g] += (1 / n1[indb, n, guess]) * (reward - q1[indb, n, guess])
     q0[indb] += (1 / n0[indb]) * np.max(
         [q1[indb, n, g] for g in [0, 1]] - q0[indb]
     )
     n0[indb] += 1
-    n1[indb, n, g] += 1
+    n1[indb, n, guess] += 1
     return QLearningParms(q0, q1, n0, n1)
 
 
@@ -88,7 +92,7 @@ def updates(indb, n, g, r, qlearning:QlearningParms, lr=0.001):
 # It could be interesting to change the reward with the mean_rew.
 def Update_reload(n0, n1, mean_rew, restart_point, restart_epsilon):
     """
-
+    Resetea n0 y n1 cuando el cambio es grande
 
     Parameters
     ----------

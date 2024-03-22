@@ -10,45 +10,45 @@ import matplotlib.pyplot as plt
 from qrec.utils import p
 
 
-def guess_intensity(alpha, delta1, lambd):
-    """Guess the intensity from the paramters"""
-    # TODO: Implement me
-    raise NonImplementedError
 
+import numpy as np
+import os
+import sys
+path = "Model_Semi_aware/"
+sys.path.insert(0, os.getcwd())
+from qrec.utils import p
+import matplotlib.pyplot as plt
 
-def experiments(alpha, duration):
-    observations = []
+def guess_intensity(alpha, duration, lambd=0.0):
+    """
+    Estimates alpha from the results of previous experiments.
+
+    """
+    observations = np.random.choice([0,1], duration, p=[p(alpha, 0, lambd,  0), p(alpha, 0, lambd,  1)])
+    p0 = 0
     for i in range(duration):
-        if np.random.uniform(0, 1) < p(alpha, 0):
-            observations.append(0)
-        else:
-            observations.append(1)
-    return observations
+        if observations[i] == 0:
+            p0 += 1/duration
+    return np.sqrt(-np.log(p0))
+
 
 
 if __name__ == "__main__":
     alpha = 0.5  # This is not accessible in the experiment
-    quantity = 10
-    for j in range(quantity):
-        print(j)
-        results = []
-        tot_experiments = 500
-        observations = experiments(alpha, tot_experiments)
-        int_med = 0
-        for i in range(0, len(observations)):
-            int_med *= i
-            int_med += observations[i]
-            int_med /= i + 1
-            if int_med != 1:
-                results.append(np.sqrt(-np.log(1 - int_med)))
-
-        x = np.linspace(
-            tot_experiments - len(results), tot_experiments, len(results)
-        )
-
-        plt.plot(x, results)
+    results = []
+    tot_experiments = 2000
+    disperssion = np.array([alpha + 1/np.sqrt(i) for i in range(tot_experiments)])
+    for i in range(tot_experiments):
+        print(i)
+        results.append(guess_intensity(alpha, i))        
+    
+    plt.plot(results, label=r"$\alpha^{guess}$")
+    plt.plot(disperssion, label=r"$\frac{1}{\sqrt{N}}$")
     plt.axhline(alpha, color="black")
-    plt.ylabel("prediction")
-    plt.xlabel("experiments used")
+    plt.ylabel(r"$\alpha$")
+    plt.xlabel(r"$N$")
     plt.legend()
     plt.show()
+
+
+
