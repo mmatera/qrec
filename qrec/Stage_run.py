@@ -7,68 +7,51 @@ and make the decisions.
 
 """
 
-import numpy as np
-
-from .utils import (
-    Perr_model,
-    p_model,
-    ep_greedy,
-    give_outcome,
-    calculate_mean_rew,
-    model_aware_optimal,
-    Psq,
-    QLearningParms0,
-    give_reward,
-)
-
-# from Model_Semi_aware.intensity_guess import guess_intensity
 import time
 
-"""
-Hyperparameters:
-[0] Epsilon0.
-[1] how fast epsilon varies.
-[2] Dispersion of random Gaussian.
-[3] Learning rate reset.
-"""
+import numpy as np
 
-from collections import namedtuple
-
-# Better explicit that implicit...
-Hyperparameters = namedtuple(
-    "Hyperparameter",
-    [
-        "epsilon0",
-        "delta_epsilon",
-        "delta_learning_rate",
-        "dispersion_random",
-        "temperature",
-    ],
+from qrec.Model_Semi_aware.intensity_guess import guess_intensity
+from qrec.utils import (
+    Hyperparameters,
+    Qlearning_parameters,
+    calculate_mean_reward,
+    comm_success_prob,
+    ep_greedy,
+    give_outcome,
+    give_reward,
+    model_aware_optimal,
+    p_model,
+    perr_model,
 )
-
 
 
 # How the q-learning parameters update.
-def updates(indb, result, guess, reward, qlearning:QlearningParms, lr=0.001):
+def updates(
+    beta_indx,
+    outcome,
+    guess,
+    reward,
+    qlearning: Qlearning_parameters,
+    #    learning_rate=0.001,
+):
     """
-    Dado que se observó el índice indb, con resultado n,
-    y estimación previa g, se actualizan los valores
-    con una recompensa r y y learning rate lr.
+    Given that by setting beta=beta[indb] `outcome` was obtained,
+    and the `guess`, update the qlearning params
+    using `reward` and `the learning rate lr`.
 
     Parameters
     ----------
-    indb : TYPE
-        index choice 
-    result : TYPE
-        resultado de la observación actual.
+    beta_indx : int
+        index of the beta parameter
+    outcome: int
+        the actual result of the measurement
     guess : TYPE
-        clasificación estimada.
-    reward : TYPE
-        DESCRIPTION.
+        estimated result.
+    reward : float
+        the reward obtained if guess and outcome match.
     qlearning : QLarningParms
         current values of the learning parameters.
-    lr : TYPE, optional
-        Learning rate. The default is 0.001.
 
     Returns
     -------
@@ -76,137 +59,227 @@ def updates(indb, result, guess, reward, qlearning:QlearningParms, lr=0.001):
         the new values of the learning parameters.
 
     """
-    # TODO: check if it is possible to update 1-g too.
-    n = result
-    q0, q1, n0, n1 = qlearning
-    q1[indb, n, g] += (1 / n1[indb, n, guess]) * (reward - q1[indb, n, guess])
-    q0[indb] += (1 / n0[indb]) * np.max(
-        [q1[indb, n, g] for g in [0, 1]] - q0[indb]
+
+    q_0 = qlearning.q0
+    q_1 = qlearning.q1
+    n_0 = qlearning.n0
+    n_1 = qlearning.n1
+
+    q_1[beta_indx, outcome, guess] += (1 / n_1[beta_indx, outcome, guess]) * (
+        reward - q_1[beta_indx, outcome, guess]
     )
-    n0[indb] += 1
-    n1[indb, n, guess] += 1
-    return QLearningParms(q0, q1, n0, n1)
+    q_0[beta_indx] += (1 / n_0[beta_indx]) * np.max(
+        [q_1[beta_indx, outcome, g] for g in [0, 1]] - q_0[beta_indx]
+    )
+    n_0[beta_indx] += 1
+    n_1[beta_indx, outcome, guess] += 1
+    return qlearning
 
 
 # How the learning rate changes when the environment changes.
 # It could be interesting to change the reward with the mean_rew.
-def Update_reload(n0, n1, mean_rew, restart_point, restart_epsilon):
+
+
+def update_reload(qlearning: Qlearning_parameters, restart_point, restart_epsilon):
     """
-    Resetea n0 y n1 cuando el cambio es grande
+    Reset n0 and n1 when the change is large.
 
     Parameters
     ----------
-    n0 : TYPE
-        parameter.
-    n1 : TYPE
+    qlearning : Qlearning_parameters
         DESCRIPTION.
-    mean_rew : float
-        current mean reward.
     restart_point : TYPE
         DESCRIPTION.
-    restart_epsilon : float
-        threshold value to restart.
+    restart_epsilon : TYPE
+        DESCRIPTION.
 
     Returns
     -------
-    n0 : TYPE
+    n_0 : TYPE
         DESCRIPTION.
-    n1 : TYPE
+    n_1 : TYPE
         DESCRIPTION.
     epsilon : TYPE
         DESCRIPTION.
 
     """
     epsilon = restart_epsilon
-    for i, n1_i in enumerate(n1):
-        n0[i] = restart_point
-        if n0[i] < 1:
-            n0[i] = 1
+    n_0 = qlearning.n0
+    n_1 = qlearning.n1
+    for i, n1_i in enumerate(qlearning.n1):
+        n_0[i] = restart_point
+        if n_0[i] < 1:
+            n_0[i] = 1
         for j, n1_i_j in enumerate(n1_i):
             for k, n1_i_j_k in enumerate(n1_i_j):
-                n1[i, j, k] = restart_point
+                n_1[i, j, k] = restart_point
                 if n1_i_j_k < 1:
-                    n1[i, j, k] = 1
-    return n0, n1, epsilon
+                    n_1[i, j, k] = 1
+    return n_0, n_1, epsilon
 
 
 # Reload the Q-function with the model.
-def reset_with_model(alpha, beta_grid, q0, q1):
+def reset_with_model(alpha, qlearning: Qlearning_parameters):
     """
-    Reload the Q-function assuming a model
+
 
     Parameters
     ----------
     alpha : TYPE
-        DESCRIPTION.
-    beta_grid : TYPE
-        DESCRIPTION.
-    q0 : TYPE
-        DESCRIPTION.
-    q1 : TYPE
+        the offset of the signal.
+    qlearning : Qlearning_parameters
         DESCRIPTION.
 
     Returns
     -------
-    q0 : TYPE
-        DESCRIPTION.
-    q1 : TYPE
+    qlearn : TYPE
         DESCRIPTION.
 
     """
-    for i in range(len(beta_grid)):
-        q0[i] = 1 - Perr_model(beta_grid[i], alpha)
+    q_0 = qlearning.q0
+    q_1 = qlearning.q1
+    beta_grid = qlearning.betas_grid
+    # set q_0 with the sucess probabilities
+    # for the Bayes' decision rule
+    for i, beta in enumerate(beta_grid):
+        q_0[i] = 1 - perr_model(beta, alpha)
 
-    for i in range(len(q1)):
-        for j in range(len(q1[i])):
-            for k in range(len(q1[i, j])):
-                q1[i, j, k] = p_model(
-                    (-1) ** (k + 1) * alpha, -beta_grid[i], j
-                ) / (
-                    p_model(-alpha, -beta_grid[i], j)
-                    + p_model(alpha, -beta_grid[i], j)
+    for i, q1_i in enumerate(q_1):
+        for outcome, q1_ij in enumerate(q1_i):
+            for k in range(len(q1_ij)):
+                beta = -beta_grid[i]
+                prob = p_model((-1) ** (k + 1) * alpha, beta, outcome)
+
+                # Marginal probability of the outcome
+                # for unknown phase of alpha8
+                total_prob = p_model(-alpha, beta, outcome) + p_model(
+                    alpha, beta, outcome
                 )
 
-    return q0, q1
+                q_1[i, outcome, k] = prob / total_prob
+
+    return qlearning
 
 
 # Change in beta.
-def Experiment_noise_1(q0, q1, betas_grid, hyperparam, epsilon, alpha, lambd):
-    """Simulate the experiment changing beta"""
+def experiment_noise_1(
+    qlearning: Qlearning_parameters,
+    hyperparam: Hyperparameters,
+    epsilon,
+    alpha,
+    lambd,
+):
+    """
+    Run the experiment with type 1 noise
+
+    Parameters
+    ----------
+    qlearn : Qlearning_parameters
+        DESCRIPTION.
+    hyperparam : Hyperparameters
+        DESCRIPTION.
+    epsilon : TYPE
+        DESCRIPTION.
+    alpha : TYPE
+        DESCRIPTION.
+    lambd : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    beta_idx : int
+        detector offset index.
+    beta : float
+        detector offset.
+    outcome : TYPE
+        actual experiment outcome.
+    guess_indx : int
+        guessed outcome index.
+    guess : int
+        guessed outcome.
+    reward : TYPE
+        reward obtained from the guess.
+
+    """
+    q_0 = qlearning.q0
+    q_1 = qlearning.q1
+    betas_grid = qlearning.betas_grid
     hidden_phase = np.random.choice([0, 1])
 
-    indb, b = ep_greedy(
-        q0, betas_grid, hyperparam.delta_learning_rate, ep=epsilon
+    beta_idx, beta = ep_greedy(q_0, betas_grid, hyperparam.delta, nr_prob=epsilon)
+    outcome = give_outcome(hidden_phase, beta, alpha=alpha, lambd=lambd)
+    guess_indx, guess = ep_greedy(
+        q_1[beta_idx, outcome, :], [0, 1], hyperparam.delta, nr_prob=epsilon
     )
-    n = give_outcome(hidden_phase, b, alpha=alpha, lambd=lambd)
-    indg, g = ep_greedy(
-        q1[indb, n, :], [0, 1], hyperparam.delta_learning_rate, ep=epsilon
-    )
-    r = give_reward(g, hidden_phase)
-    return indb, b, n, indg, g, r
+    reward = give_reward(guess, hidden_phase)
+    return beta_idx, beta, outcome, guess_indx, guess, reward
 
 
 # Change in the priors
-def Experiment_noise_2(q0, q1, betas_grid, hyperparam, epsilon, alpha, lambd):
-    """Simulate the experiment with modified priors"""
+def experiment_noise_2(
+    qlearning: Qlearning_parameters,
+    hyperparam: Hyperparameters,
+    epsilon,
+    alpha,
+    lambd,
+):
+    """
+    Simulate the experiment with modified priors
+
+
+    Parameters
+    ----------
+    qlearning : Qlearning_parameters
+        DESCRIPTION.
+    hyperparam : Hyperparameters
+        DESCRIPTION.
+    epsilon : TYPE
+        DESCRIPTION.
+    alpha : TYPE
+        state displacement.
+    lambd : TYPE
+        noise parameter.
+
+    Returns
+    -------
+    beta_indx : TYPE
+        index in betas_grid for the beta choosen.
+    beta : TYPE
+        detector offset.
+    outcome : TYPE
+        actual result of the measurement.
+    guess_indx : TYPE
+        index of the guessed value.
+    guess : int
+        guess value.
+    reward : TYPE
+        reward obtained from the experiment.
+
+    """
+    q_0 = qlearning.q0
+    q_1 = qlearning.q1
+    betas_grid = qlearning.betas_grid
     hidden_phase = np.random.choice([0, 1], p=[0.5 - lambd, 0.5 + lambd])
-    indb, b = ep_greedy(
-        q0, betas_grid, hyperparam.delta_learning_rate, ep=epsilon
+    beta_indx, beta = ep_greedy(
+        q_0, betas_grid, hyperparam.delta_learning_rate, nr_prob=epsilon
     )
-    n = give_outcome(hidden_phase, b, alpha=alpha, lambd=0)
-    indg, g = ep_greedy(
-        q1[indb, n, :], [0, 1], hyperparam.delta_learning_rate, ep=epsilon
+    outcome = give_outcome(hidden_phase, beta, alpha=alpha, lambd=0)
+    guess_indx, guess = ep_greedy(
+        q_1[beta_indx, outcome, :],
+        [0, 1],
+        hyperparam.delta_learning_rate,
+        nr_prob=epsilon,
     )
-    r = give_reward(g, hidden_phase)
-    return indb, b, n, indg, g, r
+    reward = give_reward(guess, hidden_phase)
+    return beta_indx, beta, outcome, guess_indx, guess, reward
 
 
 # Exactly the same but checks with model to update initial parameters.
-def Run_Experiment(
+def run_experiment(
     details,
-    N,
+    training_size,
     alpha,
-    hyperparam=(),
+    hyperparam: Hyperparameters,
     delta1=1000,
     current=1.5,
     lambd=0.0,
@@ -219,8 +292,9 @@ def Run_Experiment(
     Parameters
     ----------
     details : dictionary
-        All the information about the agent parameters and the previous experiments.
-    N : int
+        All the information about the agent parameters and the previous
+        experiments.
+    training_size : int
         Amount of states use for the training.
     alpha : float
         Intensity of the state used in the experiment.
@@ -231,9 +305,11 @@ def Run_Experiment(
     current: float.
         intensity predicted for the model previously.
     lambd: float
-        Amount of unkwnown noise. 0.0 meaning that there is no extra noise in the channel.
+        Amount of unkwnown noise. 0.0 meaning that there is no extra noise in
+        the channel.
     model: bool
-        True if the agent can use a model to predict initial values, False otherwise.
+        True if the agent can use a model to predict initial values,
+        False otherwise.
     noise_type: int
         1 -> change in the expected displacement, 2 -> change in the prior.
 
@@ -241,89 +317,100 @@ def Run_Experiment(
     Returns
     -------
     details: dictionary.
-        All the information about the agent parameters and the previous experiments.
+        All the information about the agent parameters and
+        the previous experiments.
 
     """
     start = time.time()
     mean_rew = float(details["mean_rewards"][-1])
     points = [mean_rew, float(details["mean_rewards"][-2])]
     means = details["means"]
-    q0, q1, n0, n1 = details["tables"]
-    betas_grid = details["betas"]
+    qlearning = details["tables"]
+    betas_grid = qlearning.betas_grid
+    reward = 0
 
     guessed_intensity = current
     epsilon = float(details["ep"])
     checked = False
 
-    for experiment in range(0, N):
+    for experiment in range(0, training_size):
         if epsilon > 0.05:
             epsilon -= hyperparam.delta_epsilon
         else:
             epsilon = 0.05
-        if experiment % (N // 10) == 0:
+        if experiment % (training_size // 10) == 0:
             print(experiment)
 
-        if noise_type == 0:
-            pass
         if noise_type == 1:
-            indb, b, n, indg, g, r = Experiment_noise_1(
-                q0, q1, betas_grid, hyperparam, epsilon, alpha, lambd
-            )
-        if noise_type == 2:
-            indb, b, n, indg, g, r = Experiment_noise_2(
-                q0, q1, betas_grid, hyperparam, epsilon, alpha, lambd
-            )
+            (
+                beta_indx,
+                beta,
+                outcome,
+                _,
+                guess,
+                reward,
+            ) = experiment_noise_1(qlearning, hyperparam, epsilon, alpha, lambd)
+        elif noise_type == 2:
+            (
+                beta_indx,
+                beta,
+                outcome,
+                guess_indx,
+                guess,
+                reward,
+            ) = experiment_noise_2(qlearning, hyperparam, epsilon, alpha, lambd)
+        else:
+            (
+                beta_indx,
+                beta,
+                outcome,
+                guess_indx,
+                guess,
+                reward,
+            ) = experiment_noise_1(qlearning, hyperparam, epsilon, alpha, 0.0)
 
-        means, mean_rew = calculate_mean_rew(means, mean_rew, r, delta1)
+        means, mean_reward = calculate_mean_reward(means, mean_rew, reward, delta1)
 
         # Check if the reward is smaller
         if experiment % delta1 == 0:
             points[0] = points[1]
             points[1] = mean_rew
             mean_deriv = points[1] - points[0]
-            if mean_deriv <= -0.2 and n0[indb] > 300:
-                n0, n1, epsilon = Update_reload(
-                    n0,
-                    n1,
-                    mean_rew,
-                    hyperparam.dispersion_random,
-                    hyperparam.epsilon0,
+            if mean_deriv <= -0.2 and qlearning.n0[beta_indx] > 300:
+                qlearning.n0, qlearning.n1, epsilon = update_reload(
+                    qlearning,
+                    hyperparam.reset_rl,
+                    hyperparam.eps_0,
                 )
                 checked = True
 
         # If it looks like changed, guess a new intensity to verify.
         if model and checked:
-            guessed_intensity = guess_intensity(
-                alpha, delta1 * 10, lambd=lambd
-            )
+            guessed_intensity = guess_intensity(alpha, delta1 * 10, lambd=lambd)
             print(guessed_intensity)
             if np.abs(guessed_intensity - current) > 5 / np.sqrt(delta1 * 10):
                 current = guessed_intensity
-                q0, q1 = reset_with_model(current, betas_grid, q0, q1)
+                reset_with_model(current, qlearning)
             checked = False
 
-        q0, q1, n0, n1 = updates(indb, n, g, r, q0, q1, n0, n1)
+        updates(beta_indx, outcome, guess, reward, qlearning)
 
-        _, pstar, bstar = model_aware_optimal(
-            betas_grid, alpha=alpha, lambd=lambd
-        )
+        _, pstar, _ = model_aware_optimal(betas_grid, alpha=alpha, lambd=lambd)
 
         details["mean_rewards"].append(mean_rew)
         details["means"] = means
-        details["experience"].append([b, n, g, r / (1 - pstar)])
+        details["experience"].append([beta, outcome, guess, reward / (1 - pstar)])
         details["Ps_greedy"].append(
-            Psq(
-                q0,
-                q1,
-                betas_grid,
-                hyperparam.delta_learning_rate,
+            comm_success_prob(
+                qlearning,
+                hyperparam.delta,
                 alpha=alpha,
-                lambd=lambd,
+                detuning=lambd,
             )
         )
-    details["tables"] = [q0, q1, n0, n1]
+    details["tables"] = qlearning
     end = time.time() - start
     details["total_time"] = end
     details["ep"] = f"{epsilon}"
-    print(n0)
+    print(qlearning.n0)
     return details
