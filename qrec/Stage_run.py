@@ -8,9 +8,9 @@ and make the decisions.
 """
 
 import time
-
 import numpy as np
 
+from typing import List, Tuple
 from qrec.Model_Semi_aware.intensity_guess import guess_intensity
 from qrec.utils import (
     Hyperparameters,
@@ -80,7 +80,9 @@ def updates(
 # It could be interesting to change the reward with the mean_rew.
 
 
-def update_reload(qlearning: Qlearning_parameters, restart_point, restart_epsilon):
+def update_reload(
+    qlearning: Qlearning_parameters, restart_point, restart_epsilon
+):
     """
     Reset n0 and n1 when the change is large.
 
@@ -162,117 +164,93 @@ def reset_with_model(alpha, qlearning: Qlearning_parameters):
     return qlearning
 
 
-# Change in beta.
-def experiment_noise_1(
+class PhotonSource:
+    def __init__(self, alpha=1.5, lambd=0, bias=0.0):
+        self.beta = 0.0  # Offset in the detector.
+        self.alpha = alpha  # The amplitude of the coherent state in the source
+        self.lambd = lambd  # Amplitude fluctuations
+        self.bias = bias  # prior bias in the signal.
+
+    def signal(self, message: Tuple[int]) -> Tuple[int]:
+        """
+        Simulate the arrival of a train of photons to the detector,
+        Phase of the photons codify message.
+
+        Parameters
+        ----------
+        message : Tuple[int]
+            A tuple of zeros and ones codifying the message
+
+        Returns
+        -------
+        signal: Tuple[int]
+            the sequence of the outcomes in the detector.
+        """
+        return tuple(
+            give_outcome(
+                msg_bit, self.beta, alpha=self.alpha, lambd=self.lambd
+            )
+            for msg_bit in message
+        )
+
+    def training_signal(self, size) -> Tuple[Tuple[int], Tuple[int]]:
+        """
+        Simulates a source that produces a stream of bits and
+        a the signal from the detector assuming that the phases of the
+        photons encode the stream.
+
+        Parameters
+        ----------
+
+        size: int
+           the length of the random message
+
+        Returns
+        -------
+        message: Tuple[int]
+            a random stream
+        signal: Tuple[int]
+            the output of the detector.
+
+        """
+        message = tuple(int(m) for m in np.random.rand(size) + 0.5 * self.bias)
+        return message, self.signal(message)
+
+
+def callibration(
+    src: PhotonSource,
+    size_training: int,
+    epsilon: float,
     qlearning: Qlearning_parameters,
     hyperparam: Hyperparameters,
-    epsilon,
-    alpha,
-    lambd,
 ):
     """
-    Run the experiment with type 1 noise
-
-    Parameters
-    ----------
-    qlearn : Qlearning_parameters
-        DESCRIPTION.
-    hyperparam : Hyperparameters
-        DESCRIPTION.
-    epsilon : TYPE
-        DESCRIPTION.
-    alpha : TYPE
-        DESCRIPTION.
-    lambd : TYPE
-        DESCRIPTION.
-
-    Returns
-    -------
-    beta_idx : int
-        detector offset index.
-    beta : float
-        detector offset.
-    outcome : TYPE
-        actual experiment outcome.
-    guess_indx : int
-        guessed outcome index.
-    guess : int
-        guessed outcome.
-    reward : TYPE
-        reward obtained from the guess.
-
+    Perform a step of callibration by asking a training set to the source.
     """
     q_0 = qlearning.q0
     q_1 = qlearning.q1
     betas_grid = qlearning.betas_grid
-    hidden_phase = np.random.choice([0, 1])
-
-    beta_idx, beta = ep_greedy(q_0, betas_grid, hyperparam.delta, nr_prob=epsilon)
-    outcome = give_outcome(hidden_phase, beta, alpha=alpha, lambd=lambd)
-    guess_indx, guess = ep_greedy(
-        q_1[beta_idx, outcome, :], [0, 1], hyperparam.delta, nr_prob=epsilon
-    )
-    reward = give_reward(guess, hidden_phase)
-    return beta_idx, beta, outcome, guess_indx, guess, reward
-
-
-# Change in the priors
-def experiment_noise_2(
-    qlearning: Qlearning_parameters,
-    hyperparam: Hyperparameters,
-    epsilon,
-    alpha,
-    lambd,
-):
-    """
-    Simulate the experiment with modified priors
-
-
-    Parameters
-    ----------
-    qlearning : Qlearning_parameters
-        DESCRIPTION.
-    hyperparam : Hyperparameters
-        DESCRIPTION.
-    epsilon : TYPE
-        DESCRIPTION.
-    alpha : TYPE
-        state displacement.
-    lambd : TYPE
-        noise parameter.
-
-    Returns
-    -------
-    beta_indx : TYPE
-        index in betas_grid for the beta choosen.
-    beta : TYPE
-        detector offset.
-    outcome : TYPE
-        actual result of the measurement.
-    guess_indx : TYPE
-        index of the guessed value.
-    guess : int
-        guess value.
-    reward : TYPE
-        reward obtained from the experiment.
-
-    """
-    q_0 = qlearning.q0
-    q_1 = qlearning.q1
-    betas_grid = qlearning.betas_grid
-    hidden_phase = np.random.choice([0, 1], p=[0.5 - lambd, 0.5 + lambd])
     beta_indx, beta = ep_greedy(
         q_0, betas_grid, hyperparam.delta_learning_rate, nr_prob=epsilon
     )
-    outcome = give_outcome(hidden_phase, beta, alpha=alpha, lambd=0)
-    guess_indx, guess = ep_greedy(
-        q_1[beta_indx, outcome, :],
-        [0, 1],
-        hyperparam.delta_learning_rate,
-        nr_prob=epsilon,
-    )
-    reward = give_reward(guess, hidden_phase)
-    return beta_indx, beta, outcome, guess_indx, guess, reward
+    src.beta = beta
+    hidden_phase, outcome = src.training_signal(size_training)
+    rewards = []
+    guesses = []
+    beta_indxs = []
+
+    for phase, out in zip(hidden_phase, outcome):
+        guess_indx, guess = ep_greedy(
+            q_1[beta_indx, out, :],
+            [0, 1],
+            hyperparam.delta_learning_rate,
+            nr_prob=epsilon,
+        )
+        rewards.append(give_reward(guess, phase))
+        guesses.append(guess)
+        beta_indxs.append(beta_indx)
+
+    return hidden_phase, outcome, beta_indxs, guesses, rewards
 
 
 def run_experiment(
@@ -280,7 +258,7 @@ def run_experiment(
     training_size,
     alpha,
     hyperparam: Hyperparameters,
-    delta1=1000,
+    buffer_size=1000,
     current=1.5,
     lambd=0.0,
     model=True,
@@ -300,8 +278,8 @@ def run_experiment(
         Intensity of the state used in the experiment.
     hyperparam: Hyperparameters
         Hyperparameters used for the Q-learning algorithm.
-    delta1: int
-        Amount of rewards used to calculate the mean value.
+    buffer_size: int
+        size of the rewards buffer.
     current: float.
         intensity predicted for the model previously.
     lambd: float
@@ -321,10 +299,17 @@ def run_experiment(
         the previous experiments.
 
     """
-    start = time.time()
+    if noise_type == 0:
+        source = PhotonSource(alpha, 0, 0)
+    elif noise_type == 1:
+        source = PhotonSource(alpha, lambd, 0)
+    elif noise_type == 2:
+        source = PhotonSource(alpha, 0, lambd)
+
     witness = float(details["witness"][-1])
+    experience = details["experience"]
     points = [witness, float(details["witness"][-2])]
-    means = details["means"]
+    rewards_buffer = details["means"]
     qlearning = details["tables"]
     betas_grid = qlearning.betas_grid
     reward = 0
@@ -332,52 +317,35 @@ def run_experiment(
     epsilon = float(details["ep"])
     checked = False
 
+    start = time.time()
     for experiment in range(0, training_size):
         if epsilon > hyperparam.eps_0:
             epsilon *= hyperparam.delta_epsilon
         else:
             epsilon = hyperparam.eps_0
-            
+
         if experiment % (training_size // 10) == 0:
             print(experiment)
 
-        if noise_type == 1:
-            (
-                beta_indx,
-                beta,
-                outcome,
-                _,
-                guess,
-                reward,
-            ) = experiment_noise_1(qlearning, hyperparam, epsilon, alpha, lambd)
-        elif noise_type == 2:
-            (
-                beta_indx,
-                beta,
-                outcome,
-                _,
-                guess,
-                reward,
-            ) = experiment_noise_2(qlearning, hyperparam, epsilon, alpha, lambd)
-        else:
-            (
-                beta_indx,
-                beta,
-                outcome,
-                _,
-                guess,
-                reward,
-            ) = experiment_noise_1(qlearning, hyperparam, epsilon, alpha, 0)
+        (hidden_phases, outcomes, beta_indxs, guesses, rewards) = callibration(
+            source, 1, epsilon, qlearning, hyperparam
+        )
+        # Update the buffer and the mean reward
+        rewards_buffer.extend(rewards)
+        rewards_buffer = rewards_buffer[-buffer_size:]
+        witness = np.average(rewards_buffer)
 
-        means, witness = calculate_mean_reward(means, witness, outcome, delta1)
-        details["greed_beta"].append(betas_grid[list(qlearning.q0).index(max(qlearning.q0))])
         # Check if the reward is smaller
-        if experiment % delta1 == 0:
+        if experiment % buffer_size == 0:
             points[0] = points[1]
             points[1] = witness
             mean_deriv = points[1] - points[0]
-            #print(mean_deriv)
-            if mean_deriv >= 0.05 and qlearning.n0[list(qlearning.q0).index(max(qlearning.q0))] > 3000:
+            # print(mean_deriv)
+            if (
+                mean_deriv >= 0.05
+                and qlearning.n0[list(qlearning.q0).index(max(qlearning.q0))]
+                > 3000
+            ):
                 epsilon = update_reload(
                     qlearning,
                     hyperparam.delta_learning_rate,
@@ -387,20 +355,33 @@ def run_experiment(
 
         # If it looks like changed, guess a new intensity to verify.
         if model and checked:
-            guessed_intensity = guess_intensity(alpha, delta1 * 10, lambd=lambd)
+            guessed_intensity = guess_intensity(
+                alpha, buffer_size * 10, lambd=lambd
+            )
             print(guessed_intensity)
-            if np.abs(guessed_intensity - current) > 5 / np.sqrt(delta1 * 10):
+            if np.abs(guessed_intensity - current) > 5 / np.sqrt(
+                buffer_size * 10
+            ):
                 current = guessed_intensity
                 reset_with_model(current, qlearning)
             checked = False
 
-        updates(beta_indx, outcome, guess, reward, qlearning)
+        for beta_indx, outcome, guess, reward in zip(
+            beta_indxs, outcomes, guesses, rewards
+        ):
+            updates(beta_indx, outcome, guess, reward, qlearning)
+            experience.append([betas_grid[beta_indx], outcome, guess, reward])
 
-        #_, pstar, _ = model_aware_optimal(betas_grid, alpha=alpha, lambd=lambd)
+        # Extend the optimal beta using the current q0
+        details["greed_beta"].append(
+            betas_grid[list(qlearning.q0).index(max(qlearning.q0))]
+        )
+
+        # _, pstar, _ = model_aware_optimal(betas_grid,
+        #                                   alpha=alpha, lambd=lambd)
 
         details["witness"].append(witness)
-        details["means"] = means
-        details["experience"].append([beta, outcome, guess, reward])
+        details["means"] = rewards_buffer
         details["Ps_greedy"].append(
             comm_success_prob(
                 qlearning,
