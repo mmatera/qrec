@@ -188,35 +188,43 @@ def model_aware_optimal(betas_grid, alpha=0.4, lambd=0.0, noise_type=1):
 # Add a value for the mean reward using delta1 values.
 
 
-def calculate_mean_reward(rewards_buffer, reward, max_len):
+def update_buffer_and_compute_mean(outcomes_buffer, value, max_len):
     """
     Compute the mean reward from the previous values and
     the new reward. Append the new reward to the buffer.
 
     Parameters
     ----------
-    rewards_buffer: list
+    outcomes_buffer: list
         DESCRIPTION.
-    reward : float
+    value : float
         The new reward value.
     max_len : int
         The maximum size of the rewards buffer.
 
     Returns
     -------
-    rewards_buffer: list
+    outcomes_buffer: list
         updated buffer of rewards.
-    mean_rew : float
+    mean_val : float
         current average reward.
 
     """
+    curr_size = len(outcomes_buffer)
+    if curr_size == max_len:
+        outcomes_buffer[:-1] = outcomes_buffer[1:]
+        outcomes_buffer[-1] = value
+    elif curr_size < max_len:
+        outcomes_buffer.append(value)
+    else:
+        # Reduce the size of the buffer
+        last = max_len - 1
+        outcomes_buffer[:last] = outcomes_buffer[last:]
+        outcomes_buffer[last] = value
+        otcomes_buffer.resize(max_len)
 
-    rewards_buffer.append(reward)
-    mean_rew = np.average(rewards_buffer)
-
-    if len(rewards_buffer) > max_len:
-        rewards_buffer = rewards_buffer[-max_len:]
-    return rewards_buffer, mean_rew
+    mean_val = np.average(outcomes_buffer)
+    return outcomes_buffer, mean_val
 
 
 # Q-Learning approach

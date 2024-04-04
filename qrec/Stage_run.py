@@ -15,7 +15,6 @@ from qrec.Model_Semi_aware.intensity_guess import guess_intensity
 from qrec.utils import (
     Hyperparameters,
     Qlearning_parameters,
-    calculate_mean_reward,
     comm_success_prob,
     ep_greedy,
     give_outcome,
@@ -23,6 +22,7 @@ from qrec.utils import (
     model_aware_optimal,
     p_model,
     perr_model,
+    update_buffer_and_compute_mean,
 )
 
 
@@ -365,7 +365,7 @@ def run_experiment(
     start = time.time()
     witness = float(details["witness"][-1])
     points = [witness, float(details["witness"][-2])]
-    means = details["means"]
+    outcome_buffer = details["means"]
     qlearning = details["tables"]
     betas_grid = qlearning.betas_grid
     reward = 0
@@ -387,13 +387,10 @@ def run_experiment(
         (beta_indx, beta, outcome, guess_idx, guess, reward) = experiment_noise(
             qlearning, hyperparam, epsilon, alpha, lambd
         )
-        # Mirando esto, "means" podría llamarse "outcome_buffer", porque en definitiva
-        # lo que se guarda son los valores previos del "outcome".
-        # BTW, el nombre de la función es confuso, o esto está mal: se supone que
-        # lo que quisieramos en realidad es usar los rewards como "witness", no
-        # la media de las salidas, no?
 
-        means, witness = calculate_mean_reward(means, outcome, buffer_size)
+        outcome_buffer, witness = update_buffer_and_compute_mean(
+            outcome_buffer, outcome, buffer_size
+        )
         q0_max_idx = np.argmax(qlearning.q0)
         details["greed_beta"].append(betas_grid[q0_max_idx])
         # Each time the buffer is fully updated,
@@ -426,7 +423,7 @@ def run_experiment(
         # _, pstar, _ = model_aware_optimal(betas_grid, alpha=alpha, lambd=lambd)
 
         details["witness"].append(witness)
-        details["means"] = means
+        details["means"] = outcome_buffer
         details["experience"].append([beta, outcome, guess, reward])
         details["Ps_greedy"].append(
             comm_success_prob(
