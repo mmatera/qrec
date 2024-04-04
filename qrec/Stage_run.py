@@ -2,7 +2,7 @@
 Stage run
 
 The objective of this script is to run the experiment,
-track he hyperparameters, save the values of interest 
+track he hyperparameters, save the values of interest
 and make the decisions.
 
 """
@@ -10,19 +10,19 @@ and make the decisions.
 import time
 import numpy as np
 
-from typing import List, Tuple
+from typing import Tuple
 from qrec.Model_Semi_aware.intensity_guess import guess_intensity
 from qrec.utils import (
     Hyperparameters,
     Qlearning_parameters,
-    calculate_mean_reward,
     comm_success_prob,
     ep_greedy,
     give_outcome,
     give_reward,
-    model_aware_optimal,
+    #    model_aware_optimal,
     p_model,
     perr_model,
+    update_buffer_and_compute_mean,
 )
 
 
@@ -68,9 +68,9 @@ def updates(
     q_1[beta_indx, outcome, guess] += (1 / n_1[beta_indx, outcome, guess]) * (
         reward - q_1[beta_indx, outcome, guess]
     )
-    q_0[beta_indx] += (1 / n_0[beta_indx]) * np.max(
-        [q_1[beta_indx, outcome, g] for g in [0, 1]] - q_0[beta_indx]
-    )
+    q_0[beta_indx] += (
+        np.max([q_1[beta_indx, outcome, g] for g in range(2)]) - q_0[beta_indx]
+    ) / n_0[beta_indx]
     n_0[beta_indx] += 1
     n_1[beta_indx, outcome, guess] += 1
     return qlearning
@@ -80,9 +80,9 @@ def updates(
 # It could be interesting to change the reward with the mean_rew.
 
 
-def update_reload(
-    qlearning: Qlearning_parameters, restart_point, restart_epsilon
-):
+def update_reload(qlearning: Qlearning_parameters,
+                  delta_learning_rate:float,
+                  restart_epsilon:float):
     """
     Reset n0 and n1 when the change is large.
 
@@ -90,9 +90,9 @@ def update_reload(
     ----------
     qlearning : Qlearning_parameters
         DESCRIPTION.
-    restart_point : TYPE
+    delta_learning_rate : float
         DESCRIPTION.
-    restart_epsilon : TYPE
+    restart_epsilon : float
         DESCRIPTION.
 
     Returns
@@ -110,12 +110,12 @@ def update_reload(
     n_1 = qlearning.n1
 
     for i, n1_i in enumerate(qlearning.n1):
-        n_0[i] = restart_point
+        n_0[i] = delta_learning_rate
         if n_0[i] < 1:
             n_0[i] = 1
         for j, n1_i_j in enumerate(n1_i):
             for k, n1_i_j_k in enumerate(n1_i_j):
-                n_1[i, j, k] = restart_point
+                n_1[i, j, k] = delta_learning_rate
                 if n1_i_j_k < 1:
                     n_1[i, j, k] = 1
     return epsilon
@@ -124,19 +124,17 @@ def update_reload(
 # Reload the Q-function with the model.
 def reset_with_model(alpha, qlearning: Qlearning_parameters):
     """
-
-
     Parameters
     ----------
     alpha : TYPE
         the offset of the signal.
     qlearning : Qlearning_parameters
-        DESCRIPTION.
+        The qlearning structure.
 
     Returns
     -------
-    qlearn : TYPE
-        DESCRIPTION.
+    qlearn : Qlearning_parameters 
+        The updated qlearning structure.
 
     """
     q_0 = qlearning.q0
@@ -187,9 +185,7 @@ class PhotonSource:
             the sequence of the outcomes in the detector.
         """
         return tuple(
-            give_outcome(
-                msg_bit, self.beta, alpha=self.alpha, lambd=self.lambd
-            )
+            give_outcome(msg_bit, self.beta, alpha=self.alpha, lambd=self.lambd)
             for msg_bit in message
         )
 
@@ -226,6 +222,7 @@ def callibration(
 ):
     """
     Perform a step of callibration by asking a training set to the source.
+
     """
     q_0 = qlearning.q0
     q_1 = qlearning.q1
@@ -279,7 +276,7 @@ def run_experiment(
     hyperparam: Hyperparameters
         Hyperparameters used for the Q-learning algorithm.
     buffer_size: int
-        size of the rewards buffer.
+        size of the outcomes buffer.
     current: float.
         intensity predicted for the model previously.
     lambd: float
@@ -309,15 +306,15 @@ def run_experiment(
     witness = float(details["witness"][-1])
     experience = details["experience"]
     points = [witness, float(details["witness"][-2])]
-    rewards_buffer = details["means"]
+    outcomes_buffer = details["means"]
     qlearning = details["tables"]
     betas_grid = qlearning.betas_grid
     reward = 0
     guessed_intensity = current
     epsilon = float(details["ep"])
-    checked = False
 
     start = time.time()
+
     for experiment in range(0, training_size):
         if epsilon > hyperparam.eps_0:
             epsilon *= hyperparam.delta_epsilon
@@ -331,40 +328,33 @@ def run_experiment(
             source, 1, epsilon, qlearning, hyperparam
         )
         # Update the buffer and the mean reward
-        rewards_buffer.extend(rewards)
-        rewards_buffer = rewards_buffer[-buffer_size:]
-        witness = np.average(rewards_buffer)
+        outcomes_buffer, witness = update_buffer_and_compute_mean(
+            outcomes_buffer, witness, buffer_size
+        )
 
+        q0_max_idx = np.argmax(qlearning.q0)
         # Check if the reward is smaller
         if experiment % buffer_size == 0:
             points[0] = points[1]
             points[1] = witness
             mean_deriv = points[1] - points[0]
             # print(mean_deriv)
-            if (
-                mean_deriv >= 0.05
-                and qlearning.n0[list(qlearning.q0).index(max(qlearning.q0))]
-                > 3000
-            ):
+            if mean_deriv >= 0.05 and qlearning.n0[q0_max_idx] > 3000:
                 epsilon = update_reload(
                     qlearning,
                     hyperparam.delta_learning_rate,
                     hyperparam.eps_0,
                 )
-                checked = True
-
-        # If it looks like changed, guess a new intensity to verify.
-        if model and checked:
-            guessed_intensity = guess_intensity(
-                alpha, buffer_size * 10, lambd=lambd
-            )
-            print(guessed_intensity)
-            if np.abs(guessed_intensity - current) > 5 / np.sqrt(
-                buffer_size * 10
-            ):
-                current = guessed_intensity
-                reset_with_model(current, qlearning)
-            checked = False
+                if model:
+                    guessed_intensity = guess_intensity(
+                        alpha, buffer_size * 10, lambd=lambd
+                    )
+                    print(guessed_intensity)
+                    if np.abs(guessed_intensity - current) > 5 / np.sqrt(
+                        buffer_size * 10
+                    ):
+                        current = guessed_intensity
+                        reset_with_model(current, qlearning)
 
         for beta_indx, outcome, guess, reward in zip(
             beta_indxs, outcomes, guesses, rewards
@@ -373,15 +363,13 @@ def run_experiment(
             experience.append([betas_grid[beta_indx], outcome, guess, reward])
 
         # Extend the optimal beta using the current q0
-        details["greed_beta"].append(
-            betas_grid[list(qlearning.q0).index(max(qlearning.q0))]
-        )
+        details["greed_beta"].append(betas_grid[q0_max_idx])
 
         # _, pstar, _ = model_aware_optimal(betas_grid,
         #                                   alpha=alpha, lambd=lambd)
 
         details["witness"].append(witness)
-        details["means"] = rewards_buffer
+        details["means"] = outcomes_buffer
         details["Ps_greedy"].append(
             comm_success_prob(
                 qlearning,
