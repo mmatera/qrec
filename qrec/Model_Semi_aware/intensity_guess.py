@@ -16,7 +16,12 @@ def guess_intensity(alpha, duration, lambd=0.0):
     Estimates alpha from the results of previous experiments.
     """
     observations = np.random.choice(
-        [0, 1], duration, p=[detection_state_probability(alpha, 0, lambd, 0), detection_state_probability(alpha, 0, lambd, 1)]
+        [0, 1],
+        duration,
+        p=[
+            detection_state_probability(alpha, 0, lambd, 0),
+            detection_state_probability(alpha, 0, lambd, 1),
+        ],
     )
     p0 = 0
     for i in range(duration):

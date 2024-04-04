@@ -5,6 +5,7 @@ Utility functions
 from collections import namedtuple
 
 import numpy as np
+from numpy.random import rand
 from scipy.optimize import minimize
 
 # Probability of observing 0 or 1.
@@ -84,9 +85,7 @@ def p_model(alpha, beta, outcome):
     return detection_state_probability(alpha, beta, 0, outcome)
 
 
-def bayes_decision_error_probability(
-    beta, alpha=0.4, noise_val=0.0, noise_type=1
-):
+def bayes_decision_error_probability(beta, alpha=0.4, noise_val=0.0, noise_type=1):
     """
     (former Perr)
     Error probability given beta, alpha and noise lambd
@@ -172,13 +171,14 @@ def model_aware_optimal(betas_grid, alpha=0.4, lambd=0.0, noise_type=1):
 
     """
     # Landscape inspection
-    vals = np.array([bayes_decision_error_probability(
-        betas_grid[i], 
-        alpha=alpha, 
-        noise_val=lambd, 
-        noise_type=noise_type
-        )
-        for i in range(len(betas_grid))])
+    vals = np.array(
+        [
+            bayes_decision_error_probability(
+                beta, alpha=alpha, noise_val=lambd, noise_type=noise_type
+            )
+            for i, beta in enumerate(betas_grid)
+        ]
+    )
     mmin = vals.min()
     p_star = vals.min()
     beta_star = betas_grid[list(vals).index(mmin)]
@@ -188,37 +188,35 @@ def model_aware_optimal(betas_grid, alpha=0.4, lambd=0.0, noise_type=1):
 # Add a value for the mean reward using delta1 values.
 
 
-def calculate_mean_reward(means, mean_rew, reward, max_len):
+def calculate_mean_reward(rewards_buffer, reward, max_len):
     """
     Compute the mean reward from the previous values and
-    the new reward.
+    the new reward. Append the new reward to the buffer.
 
     Parameters
     ----------
-    means : list
-        DESCRIPTION.
-    mean_rew : float
+    rewards_buffer: list
         DESCRIPTION.
     reward : float
         The new reward value.
     max_len : int
-        The length of the memory of previous rewards.
+        The maximum size of the rewards buffer.
 
     Returns
     -------
-    means : list
-        new list of means
-    mean_rew : f
-        DESCRIPTION.
+    rewards_buffer: list
+        updated buffer of rewards.
+    mean_rew : float
+        current average reward.
 
     """
 
-    means.append(reward)
-    mean_rew = np.average(means)
+    rewards_buffer.append(reward)
+    mean_rew = np.average(rewards_buffer)
 
-    if len(means) > max_len:
-        means = means[-max_len:]
-    return means, mean_rew
+    if len(rewards_buffer) > max_len:
+        rewards_buffer = rewards_buffer[-max_len:]
+    return rewards_buffer, mean_rew
 
 
 # Q-Learning approach
@@ -232,10 +230,10 @@ def define_q(beta_steps=10, range=[-2, 0]):
     Parameters
     ----------
     nbetas : TYPE, optional
-        DESCRIPTION. The default is 10.
-    
+        The number steps in the grid used to estimate beta. The default is 10.
+
     range : TYPE, option
-        DESCRIPTION. The default is [-2, 0]
+        The range of values that beta can take. The default is [-2, 0]
 
     Returns
     -------
@@ -329,7 +327,7 @@ def near_random(q_0, delta1):
     if len(weight) != 2:
         weight[list(q_0).index(maximum)] = 0
     weight /= np.cumsum(weight)[-1]
-    #print(weight)
+    # print(weight)
 
     return np.random.choice(list(range(len(q_0))), p=weight)
 
@@ -367,7 +365,7 @@ def ep_greedy(qvals, actions, delta1, nr_prob=1.0):
         The choosen element of `actions`.
 
     """
-    if np.random.random() < nr_prob:
+    if rand() < nr_prob:
         inda = near_random(qvals, delta1)
     else:
         inda = greedy(qvals)
@@ -467,9 +465,9 @@ def comm_success_prob(
         returns alpha or -alpha according
         to the parameters
         """
-        return ep_greedy(
-            q_1[indb, out, :], alpha_phases, dispersion, nr_prob=nr_prob
-        )[1]
+        return ep_greedy(q_1[indb, out, :], alpha_phases, dispersion, nr_prob=nr_prob)[
+            1
+        ]
 
     return 0.5 * sum(
         detection_state_probability(
