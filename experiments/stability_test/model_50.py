@@ -53,7 +53,7 @@ def read_cmd_args():
         help="Nominal amplitude of the coherent state",
         type=float,
         dest="alpha",
-        default=1.5,
+        default=.25,
         metavar="ALPHA",
     )
     parser.add_argument(
@@ -89,7 +89,7 @@ def read_cmd_args():
         "-l",
         help=("Amout of noise in the source."),
         type=float,
-        default=0.0,
+        default=0.75,
         dest="lambd",
         metavar="LAMBDA",
     )
@@ -222,9 +222,7 @@ def set_and_run_experiment(
     with open("data_rec/experiments/1/details.pickle", "rb") as f:
         details = pickle.load(f)
 
-    # seed = 0
     betas_grid = details["betas"]
-    np.random.seed(seed=None)  # Random seed
 
     mmin, p_star, beta_star = model_aware_optimal(
         betas_grid, alpha=alpha, lambd=lambd, noise_type=noise_type
@@ -232,10 +230,9 @@ def set_and_run_experiment(
 
     details["alpha"] = [1.5, 0.25]  # No estoy seguro para que es esto.
 
-    np.random.seed(seed=None)
-
     hyperparam = Hyperparameters(0.01, 1 - 1 / 100, 20, 50)
     # Run the full program and get the new dictionary with the changes.
+    len_history = len(details["experience"])
     details = run_experiment(
         details,
         training_size,
@@ -251,8 +248,8 @@ def set_and_run_experiment(
     q0s.append(details["tables"][0])
     betas.append(details["greed_beta"])
     rts.append(
-        np.cumsum(stacked_history[int(5e4) :, -1])
-        / np.arange(1, len(stacked_history[int(5e4) :, -1]) + 1)
+        np.cumsum(stacked_history[len_history :, -1])
+        / np.arange(1, len(stacked_history[len_history :, -1]) + 1)
     )
     return betas_grid, beta_star, p_star
 
@@ -266,6 +263,7 @@ def __main__():
     lambd = cmd_args.lambd
     noise_type = cmd_args.noise_type
     training_size = cmd_args.training_size
+    np.random.seed(seed=cmd_args.random_seed)  # Random seed
 
     betas = []
     rts = []

@@ -5,7 +5,7 @@ Utility functions
 from collections import namedtuple
 
 import numpy as np
-from numpy.random import rand
+from numpy.random import random
 from scipy.optimize import minimize
 
 # Probability of observing 0 or 1.
@@ -195,7 +195,7 @@ def update_buffer_and_compute_mean(outcomes_buffer, value, max_len):
 
     Parameters
     ----------
-    outcomes_buffer: list
+    outcomes_buffer : list
         DESCRIPTION.
     value : float
         The new reward value.
@@ -210,6 +210,15 @@ def update_buffer_and_compute_mean(outcomes_buffer, value, max_len):
         current average reward.
 
     """
+    if True:
+        outcomes_buffer.append(value)
+        mean_rew = np.average(outcomes_buffer)
+        if len(outcomes_buffer) > max_len:
+            outcomes_buffer = outcomes_buffer[-max_len:]
+        return outcomes_buffer, mean_rew
+
+    # Another possibility. Check why this does not produce
+    # the same result.
     curr_size = len(outcomes_buffer)
     if curr_size == max_len:
         outcomes_buffer[:-1] = outcomes_buffer[1:]
@@ -225,6 +234,7 @@ def update_buffer_and_compute_mean(outcomes_buffer, value, max_len):
 
     mean_val = np.average(outcomes_buffer)
     return outcomes_buffer, mean_val
+    
 
 
 # Q-Learning approach
@@ -237,10 +247,10 @@ def define_q(beta_steps=10, range=[-2, 0]):
 
     Parameters
     ----------
-    nbetas : TYPE, optional
+    nbetas : int, optional
         The number steps in the grid used to estimate beta. The default is 10.
 
-    range : TYPE, option
+    range : list, option
         The range of values that beta can take. The default is [-2, 0]
 
     Returns
@@ -373,7 +383,7 @@ def ep_greedy(qvals, actions, delta1, nr_prob=1.0):
         The choosen element of `actions`.
 
     """
-    if rand() < nr_prob:
+    if random() < nr_prob:
         inda = near_random(qvals, delta1)
     else:
         inda = greedy(qvals)
