@@ -8,22 +8,97 @@ and make the decisions.
 """
 
 import time
+from typing import Tuple
 
 import numpy as np
 
 from qrec.Model_Semi_aware.intensity_guess import guess_intensity
-from qrec.utils import (
-    Hyperparameters,
-    Qlearning_parameters,
-    comm_success_prob,
-    ep_greedy,
-    give_outcome,
-    give_reward,
-    model_aware_optimal,
-    p_model,
-    perr_model,
-    update_buffer_and_compute_mean,
-)
+from qrec.utils import (Hyperparameters, Qlearning_parameters,
+                        comm_success_prob, ep_greedy, give_outcome,
+                        give_reward, model_aware_optimal, p_model, perr_model,
+                        update_buffer_and_compute_mean)
+
+
+class PhotonSource:
+    def __init__(self, alpha=1.5, lambd=0, bias=0.0, buffer_size=1000):
+        self.beta = 0.0  # Offset in the detector.
+        self.alpha = alpha  # The amplitude of the coherent state in the source
+        self.lambd = lambd  # Amplitude fluctuations
+        self.bias = bias  # prior bias in the signal.
+        self.buffer_size = buffer_size
+
+    def signal(self, message: Tuple[int]) -> Tuple[int]:
+        """
+        Simulate the arrival of a train of photons to the detector,
+        Phase of the photons codify message.
+
+        Parameters
+        ----------
+        message : Tuple[int]
+            A tuple of zeros and ones codifying the message
+
+        Returns
+        -------
+        signal: Tuple[int]
+            the sequence of the outcomes in the detector.
+        """
+        return tuple(
+            give_outcome(
+                msg_bit, self.beta, alpha=self.alpha, lambd=self.lambd
+            )
+            for msg_bit in message
+        )
+
+    def training_signal(self, size) -> Tuple[Tuple[int], Tuple[int]]:
+        """
+        Simulates a source that produces a stream of bits and
+        a the signal from the detector assuming that the phases of the
+        photons encode the stream.
+
+        Parameters
+        ----------
+
+        size: int
+           the length of the random message
+
+        Returns
+        -------
+        message: Tuple[int]
+            a random stream
+        signal: Tuple[int]
+            the output of the detector.
+
+        """
+        message = tuple(int(m) for m in np.random.rand(size) + 0.5 * self.bias)
+        return message, self.signal(message)
+
+    def guess_intensity(self, duration):
+        """
+        Simulates the estimation of alpha from the outcomes obtained
+        when beta is set to 0.
+
+        PARAMETERS
+        ==========
+
+        duration: int
+           size of the buffer
+
+        RETURN
+        ======
+        estimated alpha: float
+            the estimated amplitude of alpha
+
+        To do the estimation, the beta parameter of the detector is set to 0. Then, 
+        it is asked to the source to send a stream of `duration` photons with 
+        random phases.
+        Finally, beta is restorated, and the amplitude is estimated assuming a
+        coherent state source.
+        """
+        old_beta = self.beta
+        self.beta = 0
+        _, outcomes = self.training_signal(duration)
+        self.beta = old_beta
+        return np.sqrt(-np.log(1-np.average(outcomes)))
 
 
 # How the q-learning parameters update.
@@ -120,21 +195,32 @@ def update_reload(qlearning: Qlearning_parameters, restart_point, restart_epsilo
 
 
 # Reload the Q-function with the model.
+#def reset_with_model(guessed_intensity:float, source:PhotonSource, qlearning: Qlearning_parameters):
 def reset_with_model(alpha, qlearning: Qlearning_parameters):
     """
     Parameters
     ----------
-    alpha : TYPE
+    guessed_intensity: float:
+        the current guess of the amplitude.
+    source : PhotonSource
         the offset of the signal.
     qlearning : Qlearning_parameters
         The qlearning structure.
 
     Returns
     -------
-    qlearn : TYPE
-        The updated qlearning structure.
+    guess_intensity : float
+        The updated guess of the intensity
 
     """
+    # buffer_size = 10 * source.buffer_size
+    # new_guessed_intensity = source.guess_intensity(buffer_size * 10)
+    # print("Guessed intensity:",new_guessed_intensity)
+    # if np.abs(new_guessed_intensity - guessed_intensity) > 5 / np.sqrt(
+    #                   buffer_size * 10
+    #               ):
+    #   return guessed_intensity
+    
     q_0 = qlearning.q0
     q_1 = qlearning.q1
     beta_grid = qlearning.betas_grid
@@ -157,112 +243,24 @@ def reset_with_model(alpha, qlearning: Qlearning_parameters):
 
                 q_1[i, outcome, k] = prob / total_prob
 
-    return qlearning
+    # return new_guessed_intensity
 
 
-# Change in beta.
-def experiment_noise_1(
-    qlearning: Qlearning_parameters,
-    hyperparam: Hyperparameters,
-    epsilon,
-    alpha,
-    lambd,
-):
-    """
-    Run the experiment with type 1 noise
 
-    Parameters
-    ----------
-    qlearn : Qlearning_parameters
-        The current state of the qlearning.
-    hyperparam : Hyperparameters
-        The values of the hyperparameter.
-    epsilon : TYPE
-        probability of using a random policy in the beta update.
-    alpha : TYPE
-        The amplitude of the source coherent state.
-    lambd : TYPE
-        relative magnitude of the amplitude fluctuations.
 
-    Returns
-    -------
-    beta_idx : int
-        detector offset index.
-    beta : float
-        detector offset.
-    outcome : TYPE
-        actual experiment outcome.
-    guess_indx : int
-        guessed outcome index.
-    guess : int
-        guessed outcome.
-    reward : TYPE
-        reward obtained from the guess.
-
-    """
+def experiment_noise(source, qlearning, hyperparam, epsilon):
     q_0 = qlearning.q0
     q_1 = qlearning.q1
     betas_grid = qlearning.betas_grid
-    hidden_phase = np.random.choice([0, 1])
-
-    beta_idx, beta = ep_greedy(q_0, betas_grid, hyperparam.delta, near_prob=epsilon)
-    outcome = give_outcome(hidden_phase, beta, alpha=alpha, lambd=lambd)
-    guess_indx, guess = ep_greedy(
-        q_1[beta_idx, outcome, :], [0, 1], hyperparam.delta, near_prob=epsilon
-    )
-    reward = give_reward(guess, hidden_phase)
-    return beta_idx, beta, outcome, guess_indx, guess, reward
-
-
-# Change in the priors
-def experiment_noise_2(
-    qlearning: Qlearning_parameters,
-    hyperparam: Hyperparameters,
-    epsilon,
-    alpha,
-    lambd,
-):
-    """
-    Simulate the experiment with modified priors
-
-
-    Parameters
-    ----------
-    qlearn : Qlearning_parameters
-        The current state of the qlearning.
-    hyperparam : Hyperparameters
-        The values of the hyperparameter.
-    epsilon : TYPE
-        probability of using a random policy in the beta update.
-    alpha : TYPE
-        The amplitude of the source coherent state.
-    lambd : TYPE
-        magnitude of the bias in the choice of the signal value.
-
-    Returns
-    -------
-    beta_indx : TYPE
-        index in betas_grid for the beta choosen.
-    beta : TYPE
-        detector offset.
-    outcome : TYPE
-        actual result of the measurement.
-    guess_indx : TYPE
-        index of the guessed value.
-    guess : int
-        guess value.
-    reward : TYPE
-        reward obtained from the experiment.
-
-    """
-    q_0 = qlearning.q0
-    q_1 = qlearning.q1
-    betas_grid = qlearning.betas_grid
-    hidden_phase = np.random.choice([0, 1], p=[0.5 - lambd, 0.5 + lambd])
     beta_indx, beta = ep_greedy(
         q_0, betas_grid, hyperparam.delta_learning_rate, near_prob=epsilon
     )
-    outcome = give_outcome(hidden_phase, beta, alpha=alpha, lambd=0)
+    alpha = source.alpha
+    lambd = source.lambd
+    bias = source.bias
+    source.beta = beta
+    hidden_phase = np.random.choice([0, 1], p=[0.5 - bias, 0.5 + bias])
+    outcome = give_outcome(hidden_phase, beta, alpha=alpha, lambd=lambd)
     guess_indx, guess = ep_greedy(
         q_1[beta_indx, outcome, :],
         [0, 1],
@@ -270,51 +268,8 @@ def experiment_noise_2(
         near_prob=epsilon,
     )
     reward = give_reward(guess, hidden_phase)
-    return beta_indx, beta, outcome, guess_indx, guess, reward
-
-
-def experiment_noise_0(
-    qlearning: Qlearning_parameters, hyperparam: Hyperparameters, epsilon, alpha, lamdb
-):
-    """Experiement without noise
-
-    Parameters
-    ----------
-    qlearning : Qlearning_parameters
-        DESCRIPTION.
-    hyperparam : Hyperparameters
-        DESCRIPTION.
-    epsilon : TYPE
-        DESCRIPTION.
-    alpha : TYPE
-        state displacement.
-    lambd : TYPE
-        noise parameter. Discarded.
-
-    Returns
-    -------
-    beta_indx : TYPE
-        index in betas_grid for the beta choosen.
-    beta : TYPE
-        detector offset.
-    outcome : TYPE
-        actual result of the measurement.
-    guess_indx : TYPE
-        index of the guessed value.
-    guess : int
-        guess value.
-    reward : TYPE
-        reward obtained from the experiment.
-    """
-    return experiment_noise_1(qlearning, hyperparam, epsilon, alpha, 0)
-
-
-EXPERIMENT_NOISE_MODEL = {
-    0: experiment_noise_0,
-    1: experiment_noise_1,
-    2: experiment_noise_2,
-}
-
+    return beta_indx, beta, outcome, guess_indx, guess, reward    
+    
 
 def run_experiment(
     details,
@@ -322,7 +277,6 @@ def run_experiment(
     alpha,
     hyperparam: Hyperparameters,
     buffer_size=1000,
-    current=1.5,
     lambd=0.0,
     model=True,
     noise_type=None,
@@ -343,8 +297,6 @@ def run_experiment(
         Hyperparameters used for the Q-learning algorithm.
     buffer_size: int
         Size of the buffer of rewards.
-    current: float.
-        intensity predicted for the model previously.
     lambd: float
         Amount of 'unkwnown' noise. 0.0 meaning that there is no extra noise in
         the channel.
@@ -362,42 +314,65 @@ def run_experiment(
         the previous experiments.
 
     """
-    start = time.time()
-    witness = float(details["witness"][-1])
-    points = [witness, float(details["witness"][-2])]
-    outcome_buffer = details["means"]
+    reward = 0
+    guessed_intensity = 1.5
+
+    epsilon = float(details["ep"])
+    experience = details.get("experience", [])
+    outcomes_buffer = details["means"]
+    ps_greedy = details.get("Ps_greedy", [])
+    
     qlearning = details["tables"]
     betas_grid = qlearning.betas_grid
-    reward = 0
-    guessed_intensity = current
-    epsilon = float(details["ep"])
 
-    experiment_noise = EXPERIMENT_NOISE_MODEL.get(noise_type, experiment_noise_0)
 
+    witness_buffer = details["witness"] 
+    witness = float(witness_buffer[-1])
+    # last two witnesses
+    points = [float(witness_buffer[-2]), witness]
+    
+    if noise_type == 1:
+        bias = 0
+    elif noise_type == 2:
+        bias = lambd
+        lambd = 0.
+    else:
+        lambd = 0.
+
+    source = PhotonSource(alpha, lambd, bias, buffer_size)
+    
+    
+    epoch_size = 10
+    rounds = training_size // epoch_size
+
+    start = time.time()
     for experiment in range(0, training_size):
         if epsilon > hyperparam.eps_0:
             epsilon *= hyperparam.delta_epsilon
         else:
             epsilon = hyperparam.eps_0
 
-        if experiment % (training_size // 10) == 0:
+        if experiment % (rounds) == 0:
             print(experiment)
 
         (beta_indx, beta, outcome, guess_idx, guess, reward) = experiment_noise(
-            qlearning, hyperparam, epsilon, alpha, lambd
-        )
-
-        outcome_buffer, witness = update_buffer_and_compute_mean(
-            outcome_buffer, outcome, buffer_size
+            source, qlearning, hyperparam, epsilon
         )
         q0_max_idx = np.argmax(qlearning.q0)
         details["greed_beta"].append(betas_grid[q0_max_idx])
+
+        # Update witness
+        outcomes_buffer, witness = update_buffer_and_compute_mean(
+            outcomes_buffer, outcome, buffer_size
+        )
         # Each time the buffer is fully updated,
         # check if the reward is smaller
         if experiment % buffer_size == 0:
+            witness_buffer.append(witness)
             points[0] = points[1]
             points[1] = witness
             mean_deriv = points[1] - points[0]
+            # mean_deriv = witness_buffer[-1] - witness_buffer[-2]
             # print(mean_deriv)
             if mean_deriv >= 0.05 and qlearning.n0[q0_max_idx] > 3000:
                 epsilon = update_reload(
@@ -406,24 +381,24 @@ def run_experiment(
                     hyperparam.eps_0,
                 )
                 if model:
-                    guessed_intensity = guess_intensity(
+                    new_guessed_intensity = guess_intensity(
                         alpha, buffer_size * 10, lambd=lambd
                     )
-                    print(guessed_intensity)
-                    if np.abs(guessed_intensity - current) > 5 / np.sqrt(
+                    print("guessed intensity:", new_guessed_intensity)
+                    if np.abs(new_guessed_intensity - guessed_intensity) > 5 / np.sqrt(
                         buffer_size * 10
                     ):
-                        current = guessed_intensity
-                        reset_with_model(current, qlearning)
+                        guessed_intensity = new_guessed_intensity
+                        reset_with_model(guessed_intensity, qlearning)
+                    
+#                    guessed_intensity = reset_with_model(guessed_intensity, source, qlearning)
 
         updates(beta_indx, outcome, guess, reward, qlearning)
 
         # _, pstar, _ = model_aware_optimal(betas_grid, alpha=alpha, lambd=lambd)
 
-        details["witness"].append(witness)
-        details["means"] = outcome_buffer
-        details["experience"].append([beta, outcome, guess, reward])
-        details["Ps_greedy"].append(
+        experience.append([beta, outcome, guess, reward])
+        ps_greedy.append(
             comm_success_prob(
                 qlearning,
                 hyperparam.delta,
@@ -431,9 +406,13 @@ def run_experiment(
                 detuning=lambd,
             )
         )
-    details["tables"] = qlearning
     end = time.time() - start
-    details["total_time"] = end
+    details["Ps_greedy"] = ps_greedy
     details["ep"] = f"{epsilon}"
+    details["experience"] = experience
+    details["means"] = outcomes_buffer
+    details["tables"] = qlearning
+    details["total_time"] = end
+    details["witness"] = witness_buffer    
     print(qlearning.n0)
     return details
