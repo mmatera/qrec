@@ -53,7 +53,7 @@ def read_cmd_args():
         help="Nominal amplitude of the coherent state",
         type=float,
         dest="alpha",
-        default=.25,
+        default=0.25,
         metavar="ALPHA",
     )
     parser.add_argument(
@@ -143,9 +143,7 @@ def make_plots(
         disp_q0s[0].append(vals.min())
         disp_q0s[1].append(vals.max())
 
-    ax[0].fill_between(
-        betas_grid, disp_q0s[0], disp_q0s[1], alpha=0.5, color="blue"
-    )
+    ax[0].fill_between(betas_grid, disp_q0s[0], disp_q0s[1], alpha=0.5, color="blue")
     ax[0].plot(betas_grid, means_q0s, label="mean agent", color="blue")
     ax[0].plot(
         betas_grid,
@@ -215,9 +213,7 @@ def make_plots(
     plt.show()
 
 
-def set_and_run_experiment(
-    q0s, rts, betas, alpha, lambd, noise_type, training_size
-):
+def set_and_run_experiment(q0s, rts, betas, alpha, lambd, noise_type, training_size):
     """Run a round of training from a previos stored experiment"""
     with open("data_rec/experiments/1/details.pickle", "rb") as f:
         details = pickle.load(f)
@@ -248,8 +244,8 @@ def set_and_run_experiment(
     q0s.append(details["tables"][0])
     betas.append(details["greed_beta"])
     rts.append(
-        np.cumsum(stacked_history[len_history :, -1])
-        / np.arange(1, len(stacked_history[len_history :, -1]) + 1)
+        np.cumsum(stacked_history[len_history:, -1])
+        / np.arange(1, len(stacked_history[len_history:, -1]) + 1)
     )
     return betas_grid, beta_star, p_star
 

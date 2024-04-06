@@ -205,10 +205,10 @@ def experiment_noise_1(
     betas_grid = qlearning.betas_grid
     hidden_phase = np.random.choice([0, 1])
 
-    beta_idx, beta = ep_greedy(q_0, betas_grid, hyperparam.delta, nr_prob=epsilon)
+    beta_idx, beta = ep_greedy(q_0, betas_grid, hyperparam.delta, near_prob=epsilon)
     outcome = give_outcome(hidden_phase, beta, alpha=alpha, lambd=lambd)
     guess_indx, guess = ep_greedy(
-        q_1[beta_idx, outcome, :], [0, 1], hyperparam.delta, nr_prob=epsilon
+        q_1[beta_idx, outcome, :], [0, 1], hyperparam.delta, near_prob=epsilon
     )
     reward = give_reward(guess, hidden_phase)
     return beta_idx, beta, outcome, guess_indx, guess, reward
@@ -260,14 +260,14 @@ def experiment_noise_2(
     betas_grid = qlearning.betas_grid
     hidden_phase = np.random.choice([0, 1], p=[0.5 - lambd, 0.5 + lambd])
     beta_indx, beta = ep_greedy(
-        q_0, betas_grid, hyperparam.delta_learning_rate, nr_prob=epsilon
+        q_0, betas_grid, hyperparam.delta_learning_rate, near_prob=epsilon
     )
     outcome = give_outcome(hidden_phase, beta, alpha=alpha, lambd=0)
     guess_indx, guess = ep_greedy(
         q_1[beta_indx, outcome, :],
         [0, 1],
         hyperparam.delta_learning_rate,
-        nr_prob=epsilon,
+        near_prob=epsilon,
     )
     reward = give_reward(guess, hidden_phase)
     return beta_indx, beta, outcome, guess_indx, guess, reward
@@ -371,7 +371,6 @@ def run_experiment(
     reward = 0
     guessed_intensity = current
     epsilon = float(details["ep"])
-    checked = False
 
     experiment_noise = EXPERIMENT_NOISE_MODEL.get(noise_type, experiment_noise_0)
 
@@ -406,17 +405,16 @@ def run_experiment(
                     hyperparam.delta_learning_rate,
                     hyperparam.eps_0,
                 )
-                checked = True
-
-        # TODO: Check if this block should not be inside the previous if block
-        # If it looks like changed, guess a new intensity to verify.
-        if model and checked:
-            guessed_intensity = guess_intensity(alpha, buffer_size * 10, lambd=lambd)
-            print(guessed_intensity)
-            if np.abs(guessed_intensity - current) > 5 / np.sqrt(buffer_size * 10):
-                current = guessed_intensity
-                reset_with_model(current, qlearning)
-            checked = False
+                if model:
+                    guessed_intensity = guess_intensity(
+                        alpha, buffer_size * 10, lambd=lambd
+                    )
+                    print(guessed_intensity)
+                    if np.abs(guessed_intensity - current) > 5 / np.sqrt(
+                        buffer_size * 10
+                    ):
+                        current = guessed_intensity
+                        reset_with_model(current, qlearning)
 
         updates(beta_indx, outcome, guess, reward, qlearning)
 

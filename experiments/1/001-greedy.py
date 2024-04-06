@@ -122,10 +122,7 @@ def make_plots(details: dict, alpha: float):
     ax.set_xlabel(r"$\beta$")
     ax.plot(
         betas_grid,
-        [
-            1 - bayes_decision_error_probability(b, alpha=alpha)
-            for b in betas_grid
-        ],
+        [1 - bayes_decision_error_probability(b, alpha=alpha) for b in betas_grid],
         label=r"$P_s(\beta)$",
     )
     ax.legend(prop={"size": 20})
@@ -162,9 +159,7 @@ def make_plots(details: dict, alpha: float):
 
 def save_data(details, experiment_index):
     """store the results of the experiment"""
-    os.makedirs(
-        "data_rec/experiments/{}/".format(experiment_index), exist_ok=True
-    )
+    os.makedirs("data_rec/experiments/{}/".format(experiment_index), exist_ok=True)
     with open(
         "data_rec/experiments/{}/details.pickle".format(experiment_index),
         "wb",

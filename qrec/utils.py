@@ -5,7 +5,7 @@ Utility functions
 from collections import namedtuple
 
 import numpy as np
-from numpy.random import random
+from numpy.random import choice, random
 from scipy.optimize import minimize
 
 # Probability of observing 0 or 1.
@@ -185,7 +185,7 @@ def model_aware_optimal(betas_grid, alpha=0.4, lambd=0.0, noise_type=1):
     return mmin, p_star, beta_star
 
 
-# Add a value for the mean reward using delta1 values.
+# Add a value for the mean reward using delta values.
 
 
 def update_buffer_and_compute_mean(outcomes_buffer, value, max_len):
@@ -210,15 +210,6 @@ def update_buffer_and_compute_mean(outcomes_buffer, value, max_len):
         current average reward.
 
     """
-    if True:
-        outcomes_buffer.append(value)
-        mean_rew = np.average(outcomes_buffer)
-        if len(outcomes_buffer) > max_len:
-            outcomes_buffer = outcomes_buffer[-max_len:]
-        return outcomes_buffer, mean_rew
-
-    # Another possibility. Check why this does not produce
-    # the same result.
     curr_size = len(outcomes_buffer)
     if curr_size == max_len:
         outcomes_buffer[:-1] = outcomes_buffer[1:]
@@ -234,7 +225,6 @@ def update_buffer_and_compute_mean(outcomes_buffer, value, max_len):
 
     mean_val = np.average(outcomes_buffer)
     return outcomes_buffer, mean_val
-    
 
 
 # Q-Learning approach
@@ -291,16 +281,17 @@ def greedy(arr):
         1 if the choosen element is a maximum. 0 otherwize.
     """
     max_value = np.max(arr)
-    return np.random.choice(np.where(arr == max_value)[0])
+    candidates = np.where(arr == max_value)[0]
+    return choice(candidates)
 
 
 # Makes a Gaussian distribution over the values with the current biggest success probabilities.
-def gaussian_values(val, maximum, delta1):
+def gaussian_values(val, maximum, delta):
     """
     (former ProbabilityRandom)
     Evaluates an (unnormalized) gaussian
     function center at maximum,
-    and with dispersion delta1
+    and with inverse dispersion delta
     over the values`val`.
 
     Parameters
@@ -309,8 +300,8 @@ def gaussian_values(val, maximum, delta1):
         value / values where the gaussian is evaluated.
     maximum : float
         Center of the gaussian
-    delta1 : float
-        variance related.
+    delta : float
+        inverse of the related variance.
 
     Returns
     -------
@@ -318,20 +309,21 @@ def gaussian_values(val, maximum, delta1):
         The gaussian function evaluated over val.
 
     """
-    k = delta1 * (maximum - val)
+    k = delta * (maximum - val)
     return np.exp(-(k**2))
 
 
-def near_random(q_0, delta1):
+def near_random(q_0, delta):
     """
-    return an index according the probability
-    distribution described by arr
+    Choose an element of q_0 according to the probability distribution
+    P_i \\propto exp(-(q_i-q_max)^2 * delta_1^2) if q_i!=q_max
+                                                    else 0
 
     Parameters
     ----------
     q_0 : ndarray
         Experimentally calculated success probability for each point.
-    delta1 : TYPE
+    delta : float
         Dispersion for the random values.
 
     Returns
@@ -340,53 +332,79 @@ def near_random(q_0, delta1):
         index of the action taken.
 
     """
+    NEW = True
+    if NEW:
+        q0_size = len(q_0)
+        max_idx = np.argmax(q_0)
+        if q0_size >= 2:
+            maximum = q_0[max_idx]
+            weights = gaussian_values(q_0, maximum, delta)
+            # Esto es raro: por qué 2 es especial?
+            if q0_size != 2:
+                weights[max_idx] = 0
+            weights /= np.sum(weights)
+            return choice(len(q_0), p=weights)
+        # if there are two possibilities, try with the other
+        if q0_size > 1:
+            return 1 - max_idx
+        return 0
+
     maximum = max(q_0)
-    weight = np.array([gaussian_values(q0_i, maximum, delta1) for q0_i in q_0])
+    weight = np.array([gaussian_values(q0_i, maximum, delta) for q0_i in q_0])
     if len(weight) != 2:
         weight[list(q_0).index(maximum)] = 0
     weight /= np.cumsum(weight)[-1]
     # print(weight)
 
-    return np.random.choice(list(range(len(q_0))), p=weight)
+    return choice(list(range(len(q_0))), p=weight)
 
 
 # Decides if running a random displacement or the one with the bigger reward.
 
 
-def ep_greedy(qvals, actions, delta1, nr_prob=1.0):
+def ep_greedy(rewards, actions, delta=0, near_prob=1.0):
     """
-    Decide if running a random
-    displacement or the one with the biggest reward.
-
-    policy(q1, betas_grid)
-    policy(q1[1,0,:], [0,1])
-
+    Decide an action according to the estimated rewards.
 
     Parameters
     ----------
-    qvals : TYPE
-        DESCRIPTION.
+    rewards : float
+        reward values associated to each action.
     actions : List
         Possible outputs
-    delta1 : float
-        DESCRIPTION.
-    nr_prob : float, optional
+    delta : float
+        The inverse dispersion used when near_random is used.
+    near_prob : float, optional
         Probability of using `near_random` as the function
         used to choice the index. The default is 1., meaning
         that this function is always used.
 
     Returns
     -------
-    inda : TYPE
+    action_ind : int
         index of the choosen action.
-    TYPE
+    action:
         The choosen element of `actions`.
 
+    if near_probability == 1, use the `near_random` policy,
+    which looks for actions with rewards close to the maximum value.
+    How much close is controlled by delta: if delta=0, then
+    any value different to the maximum value is chosen.
+    For large values of delta, the choice is picked from
+    actions with rewards close to the maximum value.
+
+    if near_probability == 0, use the `greedy` policy,
+    which looks for actions with maximum reward. `delta`
+    is not used in this case.
+
+    if 0<near_probability<1, the `near_random` policy is chosen
+    with probability `near_probability`, and `greedy` with
+    probability 1-`near_probability`
     """
-    if random() < nr_prob:
-        inda = near_random(qvals, delta1)
-    else:
-        inda = greedy(qvals)
+    # A Random number is just used if near_prob is not 0 or 1.
+    # This economizes both computing power and "randomness"
+    use_near = (near_prob == 1) or (near_prob and random() < near_prob)
+    inda = near_random(rewards, delta) if use_near else greedy(rewards)
     return inda, actions[inda]
 
 
@@ -419,7 +437,7 @@ def give_outcome(hidden_phase, beta, alpha=0.4, lambd=0.0):
     sgn = (-1) ** hidden_phase
     values = np.array([0, 1])
     p_0 = detection_state_probability(alpha * sgn, beta, lambd, 0)
-    return np.random.choice(values, p=[p_0, 1 - p_0])
+    return choice(values, p=[p_0, 1 - p_0])
 
 
 # reward. 1 -> correct. 0 -> incorrect
@@ -473,9 +491,11 @@ def comm_success_prob(
     q_0 = qlearning.q0
     q_1 = qlearning.q1
     betas_grid = qlearning.betas_grid
-    nr_prob = 1  # Always use "greedy" to choice beta and alpha
+    # Always use "near_prob" to choice beta and alpha
+    # With this choice, dispersion is not required.
+    near_prob = 1
     # Pick beta from the beta grid
-    indb, beta = ep_greedy(q_0, betas_grid, dispersion, nr_prob=nr_prob)
+    indb, beta = ep_greedy(q_0, betas_grid, dispersion, near_prob=near_prob)
     alpha_phases = [alpha, -alpha]
 
     def alpha_from_experiment(out):
@@ -483,9 +503,9 @@ def comm_success_prob(
         returns alpha or -alpha according
         to the parameters
         """
-        return ep_greedy(q_1[indb, out, :], alpha_phases, dispersion, nr_prob=nr_prob)[
-            1
-        ]
+        return ep_greedy(
+            q_1[indb, out, :], alpha_phases, dispersion, near_prob=near_prob
+        )[1]
 
     return 0.5 * sum(
         detection_state_probability(
