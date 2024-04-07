@@ -19,7 +19,7 @@ from qrec.utils import (
     ep_greedy,
     give_outcome,
     give_reward,
-#    model_aware_optimal,
+    #    model_aware_optimal,
     p_model,
     perr_model,
     update_buffer_and_compute_mean,
@@ -27,6 +27,12 @@ from qrec.utils import (
 
 
 class PhotonSource:
+    r"""
+    A class that represents the optic bench, including a source of photons
+    in gaussian states |\pm \alpha*(1+lambda)>, with signs distributed with probabilities
+    p=.5+/-bias, and a detector with an offset parameter beta.
+    """
+
     def __init__(self, alpha=1.5, lambd=0, bias=0.0, buffer_size=1000):
         self.beta = 0.0  # Offset in the detector.
         self.alpha = alpha  # The amplitude of the coherent state in the source
@@ -50,7 +56,9 @@ class PhotonSource:
             the sequence of the outcomes in the detector.
         """
         return tuple(
-            give_outcome(msg_bit, self.beta, alpha=self.alpha, lambd=self.lambd)
+            give_outcome(
+                msg_bit, self.beta, alpha=self.alpha, lambd=self.lambd
+            )
             for msg_bit in message
         )
 
@@ -74,7 +82,15 @@ class PhotonSource:
             the output of the detector.
 
         """
-        message = tuple(int(m) for m in np.random.rand(size) + 0.5 * self.bias)
+        bias = self.bias
+        if bias == 0:
+            message = tuple(np.random.choice([0, 1]) for i in range(size))
+        else:
+            message = tuple(
+                np.random.choice([0, 1], [0.5 - bias, 0.5 + bias])
+                for i in range(size)
+            )
+        # message = tuple(int(m+ 0.5 * self.bias) for m in np.random.random(size))
         return message, self.signal(message)
 
     def guess_intensity(self, duration):
@@ -100,8 +116,12 @@ class PhotonSource:
         coherent state source.
         """
         # TODO: remove the next two lines
-        from qrec.Model_Semi_aware.intensity_guess import guess_intensity
-        return guess_intensity(self.alpha, duration, self.lambd)
+        use_new_code = False
+        if not use_new_code:
+            from qrec.Model_Semi_aware.intensity_guess import guess_intensity
+
+            return guess_intensity(self.alpha, duration, self.lambd)
+
         old_beta = self.beta
         self.beta = 0
         _, outcomes = self.training_signal(duration)
@@ -148,9 +168,9 @@ def updates(
     n_0 = qlearning.n0
     n_1 = qlearning.n1
 
-    q_1[beta_indx, outcome, guess] += (1 / n_1[beta_indx, outcome, guess]) * (
+    q_1[beta_indx, outcome, guess] += (
         reward - q_1[beta_indx, outcome, guess]
-    )
+    ) / n_1[beta_indx, outcome, guess]
     q_0[beta_indx] += (
         np.max([q_1[beta_indx, outcome, g] for g in range(2)]) - q_0[beta_indx]
     ) / n_0[beta_indx]
@@ -163,7 +183,9 @@ def updates(
 # It could be interesting to change the reward with the mean_rew.
 
 
-def update_reload(qlearning: Qlearning_parameters, restart_point, restart_epsilon):
+def update_reload(
+    qlearning: Qlearning_parameters, restart_point, restart_epsilon
+):
     """
     Reset n0 and n1 when the change is large.
 
@@ -186,6 +208,8 @@ def update_reload(qlearning: Qlearning_parameters, restart_point, restart_epsilo
         DESCRIPTION.
 
     """
+    # TODO: check why restart_epsilon is a parameter of this function.
+    # Also check why always returns epsilon=1
     epsilon = 1
     n_0 = qlearning.n0
     n_1 = qlearning.n1
@@ -204,7 +228,9 @@ def update_reload(qlearning: Qlearning_parameters, restart_point, restart_epsilo
 
 # Reload the Q-function with the model.
 def reset_with_model(
-    guessed_intensity: float, source: PhotonSource, qlearning: Qlearning_parameters
+    guessed_intensity: float,
+    source: PhotonSource,
+    qlearning: Qlearning_parameters,
 ):
     """
     Parameters
@@ -225,7 +251,9 @@ def reset_with_model(
     buffer_size = 10 * source.buffer_size
     new_guessed_intensity = source.guess_intensity(buffer_size)
     print("Guessed intensity:", new_guessed_intensity)
-    if np.abs(new_guessed_intensity - guessed_intensity) <= 5 / np.sqrt(buffer_size):
+    if np.abs(new_guessed_intensity - guessed_intensity) <= 5 / np.sqrt(
+        buffer_size
+    ):
         return guessed_intensity
     guessed_intensity = new_guessed_intensity
     q_0 = qlearning.q0
@@ -240,13 +268,15 @@ def reset_with_model(
         for outcome, q1_ij in enumerate(q1_i):
             for k in range(len(q1_ij)):
                 beta = -beta_grid[i]
-                prob = p_model((-1) ** (k + 1) * guessed_intensity, beta, outcome)
+                prob = p_model(
+                    (-1) ** (k + 1) * guessed_intensity, beta, outcome
+                )
 
                 # Marginal probability of the outcome
                 # for unknown phase of alpha8
-                total_prob = p_model(-guessed_intensity, beta, outcome) + p_model(
-                    guessed_intensity, beta, outcome
-                )
+                total_prob = p_model(
+                    -guessed_intensity, beta, outcome
+                ) + p_model(guessed_intensity, beta, outcome)
 
                 q_1[i, outcome, k] = prob / total_prob
 
@@ -254,23 +284,41 @@ def reset_with_model(
 
 
 def experiment_noise(source, qlearning, hyperparam, epsilon):
+    """
+    Performs a measurement to get an outcome, and compute the new estimation for beta,
+    the guess and the reward.
+    """
     alpha = source.alpha
     lambd = source.lambd
     bias = source.bias
 
-    # return experiment_noise_1(qlearning, hyperparam, epsilon, source.alpha, source.lambd)
     q_0 = qlearning.q0
     q_1 = qlearning.q1
     betas_grid = qlearning.betas_grid
-    # Both conditions should produce equivalent results. However,
-    # internally it seems to produce different random sequences.
-    if bias == 0:
-        hidden_phase = np.random.choice([0, 1])
+
+    use_new_code = True
+    if use_new_code:
+        beta_indx, beta = ep_greedy(
+            q_0, betas_grid, hyperparam.delta, near_prob=epsilon
+        )
+        source.beta = beta
+        hidden_phases, outcomes = source.training_signal(1)
+        hidden_phase = hidden_phases[0]
+        outcome = outcomes[0]
+    # TODO: Remove me when the tests are completed.
     else:
-        hidden_phase = np.random.choice([0, 1], [0.5 - bias, 0.5 + bias])
-    beta_indx, beta = ep_greedy(q_0, betas_grid, hyperparam.delta, near_prob=epsilon)
-    source.beta = beta
-    outcome = give_outcome(hidden_phase, beta, alpha=alpha, lambd=lambd)
+        # Both conditions should produce equivalent results. However,
+        # internally it seems to produce different random sequences.
+        if bias == 0:
+            hidden_phase = np.random.choice([0, 1])
+        else:
+            hidden_phase = np.random.choice([0, 1], [0.5 - bias, 0.5 + bias])
+        beta_indx, beta = ep_greedy(
+            q_0, betas_grid, hyperparam.delta, near_prob=epsilon
+        )
+        source.beta = beta
+        outcome = give_outcome(hidden_phase, beta, alpha=alpha, lambd=lambd)
+
     guess_indx, guess = ep_greedy(
         q_1[beta_indx, outcome, :],
         [0, 1],
@@ -361,9 +409,14 @@ def run_experiment(
         if experiment % (rounds) == 0:
             print(experiment)
 
-        (beta_indx, beta, outcome, guess_idx, guess, reward) = experiment_noise(
-            source, qlearning, hyperparam, epsilon
-        )
+        (
+            beta_indx,
+            beta,
+            outcome,
+            _,
+            guess,
+            reward,
+        ) = experiment_noise(source, qlearning, hyperparam, epsilon)
         q0_max_idx = np.argmax(qlearning.q0)
         details["greed_beta"].append(betas_grid[q0_max_idx])
 
