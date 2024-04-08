@@ -401,32 +401,46 @@ def run_experiment(
     rounds = training_size // epoch_size
     start = time.time()
     for experiment in range(0, training_size):
-        if epsilon > hyperparam.eps_0:
-            epsilon *= hyperparam.delta_epsilon
-        else:
-            epsilon = hyperparam.eps_0
-
-        if experiment % (rounds) == 0:
-            print(experiment)
-
-        (
-            beta_indx,
-            beta,
-            outcome,
-            _,
-            guess,
-            reward,
-        ) = experiment_noise(source, qlearning, hyperparam, epsilon)
-        q0_max_idx = np.argmax(qlearning.q0)
-        details["greed_beta"].append(betas_grid[q0_max_idx])
-
-        # Update witness
-        outcome_buffer, witness = update_buffer_and_compute_mean(
-            outcome_buffer, outcome, buffer_size
-        )
-        witness_buffer.append(witness)
-        # Each time the buffer is fully updated,
-        # check if the reward is smaller
+        if True:
+            if epsilon > hyperparam.eps_0:
+                epsilon *= hyperparam.delta_epsilon
+            else:
+                epsilon = hyperparam.eps_0
+    
+            if experiment % (rounds) == 0:
+                print(experiment)
+    
+            (
+                beta_indx,
+                beta,
+                outcome,
+                _,
+                guess,
+                reward,
+            ) = experiment_noise(source, qlearning, hyperparam, epsilon)
+            q0_max_idx = np.argmax(qlearning.q0)
+            details["greed_beta"].append(betas_grid[q0_max_idx])
+    
+            # Update witness
+            outcome_buffer, witness = update_buffer_and_compute_mean(
+                outcome_buffer, outcome, buffer_size
+            )
+            witness_buffer.append(witness)
+            updates(beta_indx, outcome, guess, reward, qlearning)
+    
+            # _, pstar, _ = model_aware_optimal(betas_grid, alpha=alpha, lambd=lambd)
+    
+            experience.append([beta, outcome, guess, reward])
+            ps_greedy.append(
+                comm_success_prob(
+                    qlearning,
+                    hyperparam.delta,
+                    alpha=alpha,
+                    detuning=lambd,
+                )
+            )
+            # Each time the buffer is fully updated,
+            # check if the reward is smaller
         if experiment % buffer_size == 0:
             points[0] = points[1]
             points[1] = witness
@@ -441,20 +455,7 @@ def run_experiment(
                 if model:
                     guessed_intensity = reset_with_model(
                         guessed_intensity, source, qlearning
-                    )
-        updates(beta_indx, outcome, guess, reward, qlearning)
-
-        # _, pstar, _ = model_aware_optimal(betas_grid, alpha=alpha, lambd=lambd)
-
-        experience.append([beta, outcome, guess, reward])
-        ps_greedy.append(
-            comm_success_prob(
-                qlearning,
-                hyperparam.delta,
-                alpha=alpha,
-                detuning=lambd,
-            )
-        )
+                    )        
     end = time.time() - start
     details["Ps_greedy"] = ps_greedy
     details["ep"] = f"{epsilon}"

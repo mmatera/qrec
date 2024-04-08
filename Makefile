@@ -1,4 +1,6 @@
 
+OPTIONS ?=
+
 .PHONY: \
 	all \
 	clean \
@@ -14,8 +16,8 @@ clean:
 	rm experiments/stability_test/*.png
 
 experiment1 :
-	python experiments/1/001-greedy.py --alpha=1.3
+	python experiments/1/001-greedy.py $(OPTIONS)
 
 stability_test: experiment1
-	python experiments/stability_test/model_50.py --alpha=1.3
+	python experiments/stability_test/model_50.py $(OPTIONS)
 
