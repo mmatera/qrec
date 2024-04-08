@@ -55,8 +55,9 @@ def detection_state_probability(alpha, beta, detunning, outcome):
         the probability of getting the outcome `n`.
 
     """
-
+    
     pr_0 = np.exp(-np.abs(alpha + (beta * (1 + detunning))) ** 2)
+    assert 0<=pr_0<=1, [alpha, beta, detunning]
     return 1 - pr_0 if outcome else pr_0
 
 
@@ -434,7 +435,7 @@ def give_outcome(hidden_phase, beta, alpha=0.4, lambd=0.0):
         0 or 1 choosen randomly acoording to the detection probability.
     """
 
-    sgn = (-1) ** hidden_phase
+    sgn = -1 if hidden_phase else 1
     values = np.array([0, 1])
     p_0 = detection_state_probability(alpha * sgn, beta, lambd, 0)
     return choice(values, p=[p_0, 1 - p_0])
