@@ -12,18 +12,11 @@ from typing import Tuple
 
 import numpy as np
 
-from qrec.utils import (
-    Hyperparameters,
-    Qlearning_parameters,
-    comm_success_prob,
-    ep_greedy,
-    give_outcome,
-    give_reward,
-    #    model_aware_optimal,
-    p_model,
-    perr_model,
-    update_buffer_and_compute_mean,
-)
+from qrec.utils import (ExperimentResult,  # model_aware_optimal,
+                        Hyperparameters, Qlearning_parameters,
+                        comm_success_prob, ep_greedy, give_outcome,
+                        give_reward, p_model, perr_model,
+                        update_buffer_and_compute_mean)
 
 
 class PhotonSource:
@@ -33,12 +26,21 @@ class PhotonSource:
     p=.5+/-bias, and a detector with an offset parameter beta.
     """
 
-    def __init__(self, alpha=1.5, lambd=0, bias=0.0, buffer_size=1000):
+    def __init__(self, beta_grid, alpha=1.5, lambd=0, bias=0.0, buffer_size=1000):
         self.beta = 0.0  # Offset in the detector.
         self.alpha = alpha  # The amplitude of the coherent state in the source
         self.lambd = lambd  # Amplitude fluctuations
         self.bias = bias  # prior bias in the signal.
         self.buffer_size = buffer_size
+        self.beta_grid = beta_grid
+
+    def set_beta_idx(self, beta_indx):
+        """
+        Set the value of the offset beta in the detector.
+
+        """
+        self.beta = self.beta_grid[beta_indx]
+        return self.beta
 
     def signal(self, message: Tuple[int]) -> Tuple[int]:
         """
@@ -56,9 +58,7 @@ class PhotonSource:
             the sequence of the outcomes in the detector.
         """
         return tuple(
-            give_outcome(
-                msg_bit, self.beta, alpha=self.alpha, lambd=self.lambd
-            )
+            give_outcome(msg_bit, self.beta, alpha=self.alpha, lambd=self.lambd)
             for msg_bit in message
         )
 
@@ -87,8 +87,7 @@ class PhotonSource:
             message = tuple(np.random.choice([0, 1]) for i in range(size))
         else:
             message = tuple(
-                np.random.choice([0, 1], [0.5 - bias, 0.5 + bias])
-                for i in range(size)
+                np.random.choice([0, 1], [0.5 - bias, 0.5 + bias]) for i in range(size)
             )
         # message = tuple(int(m+ 0.5 * self.bias) for m in np.random.random(size))
         return message, self.signal(message)
@@ -168,9 +167,9 @@ def updates(
     n_0 = qlearning.n0
     n_1 = qlearning.n1
 
-    q_1[beta_indx, outcome, guess] += (
-        reward - q_1[beta_indx, outcome, guess]
-    ) / n_1[beta_indx, outcome, guess]
+    q_1[beta_indx, outcome, guess] += (reward - q_1[beta_indx, outcome, guess]) / n_1[
+        beta_indx, outcome, guess
+    ]
     q_0[beta_indx] += (
         np.max([q_1[beta_indx, outcome, g] for g in range(2)]) - q_0[beta_indx]
     ) / n_0[beta_indx]
@@ -183,9 +182,7 @@ def updates(
 # It could be interesting to change the reward with the mean_rew.
 
 
-def update_reload(
-    qlearning: Qlearning_parameters, restart_point, restart_epsilon
-):
+def update_reload(qlearning: Qlearning_parameters, restart_point, restart_epsilon):
     """
     Reset n0 and n1 when the change is large.
 
@@ -197,16 +194,6 @@ def update_reload(
         DESCRIPTION.
     restart_epsilon : TYPE
         DESCRIPTION.
-
-    Returns
-    -------
-    n_0 : TYPE
-        DESCRIPTION.
-    n_1 : TYPE
-        DESCRIPTION.
-    epsilon : TYPE
-        DESCRIPTION.
-
     """
     # TODO: check why restart_epsilon is a parameter of this function.
     # Also check why always returns epsilon=1
@@ -223,38 +210,31 @@ def update_reload(
                 n_1[i, j, k] = restart_point
                 if n1_i_j_k < 1:
                     n_1[i, j, k] = 1
-    return epsilon
+    qlearning.parms["epsilon"] = epsilon
 
 
 # Reload the Q-function with the model.
 def reset_with_model(
-    guessed_intensity: float,
     source: PhotonSource,
     qlearning: Qlearning_parameters,
 ):
     """
     Parameters
     ----------
-    guessed_intensity: float:
-        the current guess of the amplitude.
     source : PhotonSource
         the offset of the signal.
     qlearning : Qlearning_parameters
         The qlearning structure.
 
-    Returns
-    -------
-    guess_intensity : float
-        The updated guess of the intensity
 
     """
+    guessed_intensity = qlearning.parms["guessed_intensity"]
+
     buffer_size = 10 * source.buffer_size
     new_guessed_intensity = source.guess_intensity(buffer_size)
     print("Guessed intensity:", new_guessed_intensity)
-    if np.abs(new_guessed_intensity - guessed_intensity) <= 5 / np.sqrt(
-        buffer_size
-    ):
-        return guessed_intensity
+    if np.abs(new_guessed_intensity - guessed_intensity) <= 5 / np.sqrt(buffer_size):
+        return
     guessed_intensity = new_guessed_intensity
     q_0 = qlearning.q0
     q_1 = qlearning.q1
@@ -268,22 +248,20 @@ def reset_with_model(
         for outcome, q1_ij in enumerate(q1_i):
             for k in range(len(q1_ij)):
                 beta = -beta_grid[i]
-                prob = p_model(
-                    (-1) ** (k + 1) * guessed_intensity, beta, outcome
-                )
+                prob = p_model((-1) ** (k + 1) * guessed_intensity, beta, outcome)
 
                 # Marginal probability of the outcome
                 # for unknown phase of alpha8
-                total_prob = p_model(
-                    -guessed_intensity, beta, outcome
-                ) + p_model(guessed_intensity, beta, outcome)
+                total_prob = p_model(-guessed_intensity, beta, outcome) + p_model(
+                    guessed_intensity, beta, outcome
+                )
 
                 q_1[i, outcome, k] = prob / total_prob
 
-    return new_guessed_intensity
+    qlearning.parms["guessed_intensity"] = guessed_intensity
 
 
-def experiment_noise(source, qlearning, hyperparam, epsilon):
+def experiment_noise(source, qlearning, hyperparam):
     """
     Performs a measurement to get an outcome, and compute the new estimation for beta,
     the guess and the reward.
@@ -291,6 +269,7 @@ def experiment_noise(source, qlearning, hyperparam, epsilon):
     alpha = source.alpha
     lambd = source.lambd
     bias = source.bias
+    epsilon = qlearning.parms["epsilon"]
 
     q_0 = qlearning.q0
     q_1 = qlearning.q1
@@ -319,14 +298,72 @@ def experiment_noise(source, qlearning, hyperparam, epsilon):
         source.beta = beta
         outcome = give_outcome(hidden_phase, beta, alpha=alpha, lambd=lambd)
 
-    guess_indx, guess = ep_greedy(
+    _, guess = ep_greedy(
         q_1[beta_indx, outcome, :],
         [0, 1],
         hyperparam.delta,
         near_prob=epsilon,
     )
     reward = give_reward(guess, hidden_phase)
-    return beta_indx, beta, outcome, guess_indx, guess, reward
+    updates(beta_indx, outcome, guess, reward, qlearning)
+    return ExperimentResult(beta_indx, outcome, guess, reward)
+
+
+def check_mean_derivative(
+    witness_buffer,
+    source,
+    qlearning,
+    hyperparam,
+):
+    """
+    Check for large changes in the mean derivative of the witness.
+    """
+    print("Check derivatives")
+    epsilon = qlearning.parms["epsilon"]
+    guessed_intensity = qlearning.parms["guessed_intensity"]
+    model = qlearning.parms["use model"]
+    points = qlearning.parms["points"]
+    witness = witness_buffer[-1]
+    points[0] = points[1]
+    points[1] = witness
+    print("   points:", points)
+    print(
+        "    witness     : ",
+        [witness_buffer[-source.buffer_size], witness_buffer[-1]],
+    )
+    mean_deriv = points[1] - points[0]
+    # print(mean_deriv)
+    if mean_deriv >= 0.05:
+        update_reload(
+            qlearning,
+            hyperparam.delta_learning_rate,
+            hyperparam.eps_0,
+        )
+        if model:
+            reset_with_model(source, qlearning)
+
+        qlearning.parms["epsilon"] = epsilon
+        qlearning.parms["guessed_intensity"] = guessed_intensity
+
+    return epsilon, guessed_intensity
+
+
+def evolve_epsilon(qlearning: Qlearning_parameters, hyperparam: Hyperparameters):
+    """Evolve epsilon.
+
+    PARAMETERS
+    ==========
+
+    epsilon: float
+        the current value of epsilon
+    hyperparm: Hyperparameters
+        the hyperparameters
+    """
+    epsilon = qlearning.parms["epsilon"]
+    if epsilon > hyperparam.eps_0:
+        qlearning.parms["epsilon"] = epsilon * hyperparam.delta_epsilon
+    else:
+        qlearning.parms["epsilon"] = hyperparam.eps_0
 
 
 def run_experiment(
@@ -336,7 +373,7 @@ def run_experiment(
     hyperparam: Hyperparameters,
     buffer_size=1000,
     lambd=0.0,
-    model=True,
+    use_model=True,
     noise_type=None,
 ):
     """
@@ -358,7 +395,7 @@ def run_experiment(
     lambd: float
         Amount of 'unkwnown' noise. 0.0 meaning that there is no extra noise in
         the channel.
-    model: bool
+    use_model: bool
         True if the agent can use a model to predict initial values,
         False otherwise.
     noise_type: int
@@ -373,20 +410,16 @@ def run_experiment(
 
     """
     reward = 0
-    guessed_intensity = 1.5
-
-    epsilon = float(details["ep"])
+    # epsilon = float(details["ep"])
     experience = details.get("experience", [])
-    outcome_buffer = details["means"]
+    outcomes_buffer = details["means"]
     ps_greedy = details.get("Ps_greedy", [])
 
     qlearning = details["tables"]
     betas_grid = qlearning.betas_grid
-
     witness_buffer = details["witness"]
-    witness = float(witness_buffer[-1])
-    points = [witness, float(witness_buffer[-2])]
 
+    # Setup the detector:
     if noise_type == 1:
         bias = 0
     elif noise_type == 2:
@@ -395,42 +428,30 @@ def run_experiment(
     else:
         lambd = 0.0
 
-    source = PhotonSource(alpha, lambd, bias, buffer_size)
+    qlearning.parms["use model"] = use_model
+    qlearning.parms["points"] = [float(witness_buffer[-1]), float(witness_buffer[-2])]
+    source = PhotonSource(betas_grid, alpha, lambd, bias, buffer_size)
 
-    epoch_size = 10
-    rounds = training_size // epoch_size
+    # Trainig loop
     start = time.time()
-    for experiment in range(0, training_size):
-        if True:
-            if epsilon > hyperparam.eps_0:
-                epsilon *= hyperparam.delta_epsilon
-            else:
-                epsilon = hyperparam.eps_0
-    
-            if experiment % (rounds) == 0:
-                print(experiment)
-    
-            (
-                beta_indx,
-                beta,
-                outcome,
-                _,
-                guess,
-                reward,
-            ) = experiment_noise(source, qlearning, hyperparam, epsilon)
-            q0_max_idx = np.argmax(qlearning.q0)
-            details["greed_beta"].append(betas_grid[q0_max_idx])
-    
+    for experiment in range(training_size // buffer_size):
+        print("  experiment:", experiment)
+        for __ in range(buffer_size):
+            evolve_epsilon(qlearning, hyperparam)
+            result = experiment_noise(source, qlearning, hyperparam)
+            new_beta_idx = np.argmax(qlearning.q0)
+            details["greed_beta"].append(source.set_beta_idx(new_beta_idx))
+
             # Update witness
-            outcome_buffer, witness = update_buffer_and_compute_mean(
-                outcome_buffer, outcome, buffer_size
+            outcomes_buffer, witness = update_buffer_and_compute_mean(
+                outcomes_buffer, result.outcome, buffer_size
             )
             witness_buffer.append(witness)
-            updates(beta_indx, outcome, guess, reward, qlearning)
-    
-            # _, pstar, _ = model_aware_optimal(betas_grid, alpha=alpha, lambd=lambd)
-    
-            experience.append([beta, outcome, guess, reward])
+
+            # _, pstar, _ = model_aware_optimal(betas_grid, alpha=alpha,
+            # lambd=lambd)
+
+            experience.append(result)
             ps_greedy.append(
                 comm_success_prob(
                     qlearning,
@@ -439,28 +460,22 @@ def run_experiment(
                     detuning=lambd,
                 )
             )
-            # Each time the buffer is fully updated,
-            # check if the reward is smaller
-        if experiment % buffer_size == 0:
-            points[0] = points[1]
-            points[1] = witness
-            mean_deriv = points[1] - points[0]
-            # print(mean_deriv)
-            if mean_deriv >= 0.05 and qlearning.n0[q0_max_idx] > 3000:
-                epsilon = update_reload(
-                    qlearning,
-                    hyperparam.delta_learning_rate,
-                    hyperparam.eps_0,
-                )
-                if model:
-                    guessed_intensity = reset_with_model(
-                        guessed_intensity, source, qlearning
-                    )        
+
+        # Check for jumps in the parameters
+        # TODO: Why 3000? use
+        if qlearning.n0[new_beta_idx] > hyperparam.check_jump_threshold:
+            check_mean_derivative(
+                witness_buffer,
+                source,
+                qlearning,
+                hyperparam,
+            )
+
     end = time.time() - start
     details["Ps_greedy"] = ps_greedy
-    details["ep"] = f"{epsilon}"
+    details["ep"] = f'{qlearning.parms["epsilon"]}'
     details["experience"] = experience
-    details["means"] = outcome_buffer
+    details["means"] = outcomes_buffer
     details["tables"] = qlearning
     details["total_time"] = end
     details["witness"] = witness_buffer

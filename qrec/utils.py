@@ -19,12 +19,19 @@ Hyperparameters = namedtuple(
         "delta_epsilon",  # epsilon0 change rate
         "delta",  # Dispersion of the random gaussian
         "delta_learning_rate",  # Learning rate reset
+        "check_jump_threshold",  # how much statistics is required
+        # to start checking for jumps
+        # in the reward mean derivative.
     ],
 )
 
 
 Qlearning_parameters = namedtuple(
-    "Qlearning_parameters", ["q0", "q1", "n0", "n1", "betas_grid"]
+    "Qlearning_parameters", ["q0", "q1", "n0", "n1", "betas_grid", "parms"]
+)
+
+ExperimentResult = namedtuple(
+    "ExperimentResult", ["beta_indx", "outcome", "guess", "reward"]
 )
 
 
@@ -55,9 +62,9 @@ def detection_state_probability(alpha, beta, detunning, outcome):
         the probability of getting the outcome `n`.
 
     """
-    
+
     pr_0 = np.exp(-np.abs(alpha + (beta * (1 + detunning))) ** 2)
-    assert 0<=pr_0<=1, [alpha, beta, detunning]
+    assert 0 <= pr_0 <= 1, [alpha, beta, detunning]
     return 1 - pr_0 if outcome else pr_0
 
 
@@ -258,6 +265,10 @@ def define_q(beta_steps=10, range=[-2, 0]):
         np.ones(betas_grid.shape[0]),  # Q(beta)
         np.ones((betas_grid.shape[0], 2, 2)),  # Q(beta,n; g)
         betas_grid,
+        {
+            "epsilon": 1.0,  # epsilon
+            "guessed_intensity": 1.5,  # guessed_intensity
+        },
     )
     return qlearn
 

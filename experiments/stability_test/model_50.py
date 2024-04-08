@@ -5,18 +5,15 @@ Model 50
 import os
 import pickle
 import sys
-
 from argparse import ArgumentParser
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, os.getcwd())
 from qrec.Stage_run import run_experiment
-from qrec.utils import (
-    Hyperparameters,
-    bayes_decision_error_probability,
-    model_aware_optimal,
-)
+from qrec.utils import (Hyperparameters, bayes_decision_error_probability,
+                        model_aware_optimal)
 
 EXPERIMENT_INDEX = 2
 EXPERIMENT_PATH = "experiments/stability_test/"
@@ -226,7 +223,7 @@ def set_and_run_experiment(q0s, rts, betas, alpha, lambd, noise_type, training_s
 
     details["alpha"] = [1.5, 0.25]  # No estoy seguro para que es esto.
 
-    hyperparam = Hyperparameters(0.01, 1 - 1 / 100, 20, 50)
+    hyperparam = Hyperparameters(0.01, 1 - 1 / 100, 20, 50, 3000)
     # Run the full program and get the new dictionary with the changes.
     len_history = len(details["experience"])
     details = run_experiment(
@@ -235,7 +232,7 @@ def set_and_run_experiment(q0s, rts, betas, alpha, lambd, noise_type, training_s
         alpha,
         hyperparam,
         lambd=lambd,
-        model=True,
+        use_model=True,
         noise_type=noise_type,
     )
 
