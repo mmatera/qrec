@@ -2,25 +2,17 @@ import os
 import pickle
 import sys
 import time
-
 from argparse import ArgumentParser
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 
 sys.path.insert(0, os.getcwd())
 
-from qrec.utils import (
-    bayes_decision_error_probability,
-    define_q,
-    ep_greedy,
-    give_outcome,
-    give_reward,
-    comm_success_prob,
-    model_aware_optimal,
-    Hyperparameters,
-)
 from qrec.Stage_run import run_experiment
-
+from qrec.utils import (Hyperparameters, bayes_decision_error_probability,
+                        comm_success_prob, define_q, ep_greedy, give_outcome,
+                        give_reward, model_aware_optimal)
 
 experiment_index = 1
 path = "experiments/{}/".format(experiment_index)
@@ -203,14 +195,14 @@ def main():
         "means": [],
         "greed_beta": [],
     }
-    hyperparam = Hyperparameters(1, 2 / training_size, 0, 1)
+    hyperparam = Hyperparameters(1, 2 / training_size, 0, 1, 3000)
     details = run_experiment(
         details,
         training_size,
         alpha,
         hyperparam,
         lambd=lambd,
-        model=False,
+        use_model=False,
         noise_type=noise_type,
     )
     print("The simulation took", time.time() - start)
