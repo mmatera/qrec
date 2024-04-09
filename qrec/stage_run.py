@@ -8,124 +8,19 @@ and make the decisions.
 """
 
 import time
-from typing import Tuple
 
 import numpy as np
 
-from qrec.utils import (ExperimentResult,  # model_aware_optimal,
-                        Hyperparameters, Qlearning_parameters,
-                        comm_success_prob, ep_greedy, give_outcome,
-                        give_reward, p_model, perr_model,
-                        update_buffer_and_compute_mean)
-
-
-class PhotonSource:
-    r"""
-    A class that represents the optic bench, including a source of photons
-    in gaussian states |\pm \alpha*(1+lambda)>, with signs distributed with probabilities
-    p=.5+/-bias, and a detector with an offset parameter beta.
-    """
-
-    def __init__(self, beta_grid, alpha=1.5, lambd=0, bias=0.0, buffer_size=1000):
-        self.beta = 0.0  # Offset in the detector.
-        self.alpha = alpha  # The amplitude of the coherent state in the source
-        self.lambd = lambd  # Amplitude fluctuations
-        self.bias = bias  # prior bias in the signal.
-        self.buffer_size = buffer_size
-        self.beta_grid = beta_grid
-
-    def set_beta_idx(self, beta_indx):
-        """
-        Set the value of the offset beta in the detector.
-
-        """
-        self.beta = self.beta_grid[beta_indx]
-        return self.beta
-
-    def signal(self, message: Tuple[int]) -> Tuple[int]:
-        """
-        Simulate the arrival of a train of photons to the detector,
-        Phase of the photons codify message.
-
-        Parameters
-        ----------
-        message : Tuple[int]
-            A tuple of zeros and ones codifying the message
-
-        Returns
-        -------
-        signal: Tuple[int]
-            the sequence of the outcomes in the detector.
-        """
-        return tuple(
-            give_outcome(msg_bit, self.beta, alpha=self.alpha, lambd=self.lambd)
-            for msg_bit in message
-        )
-
-    def training_signal(self, size) -> Tuple[Tuple[int], Tuple[int]]:
-        """
-        Simulates a source that produces a stream of bits and
-        a the signal from the detector assuming that the phases of the
-        photons encode the stream.
-
-        Parameters
-        ----------
-
-        size: int
-           the length of the random message
-
-        Returns
-        -------
-        message: Tuple[int]
-            a random stream
-        signal: Tuple[int]
-            the output of the detector.
-
-        """
-        bias = self.bias
-        if bias == 0:
-            message = tuple(np.random.choice([0, 1]) for i in range(size))
-        else:
-            message = tuple(
-                np.random.choice([0, 1], [0.5 - bias, 0.5 + bias]) for i in range(size)
-            )
-        # message = tuple(int(m+ 0.5 * self.bias) for m in np.random.random(size))
-        return message, self.signal(message)
-
-    def guess_intensity(self, duration):
-        """
-        Simulates the estimation of alpha from the outcomes obtained
-        when beta is set to 0.
-
-        PARAMETERS
-        ==========
-
-        duration: int
-           size of the buffer
-
-        RETURN
-        ======
-        estimated alpha: float
-            the estimated amplitude of alpha
-
-        To do the estimation, the beta parameter of the detector is set to 0. Then,
-        it is asked to the source to send a stream of `duration` photons with
-        random phases.
-        Finally, beta is restorated, and the amplitude is estimated assuming a
-        coherent state source.
-        """
-        # TODO: remove the next two lines
-        use_new_code = False
-        if not use_new_code:
-            from qrec.Model_Semi_aware.intensity_guess import guess_intensity
-
-            return guess_intensity(self.alpha, duration, self.lambd)
-
-        old_beta = self.beta
-        self.beta = 0
-        _, outcomes = self.training_signal(duration)
-        self.beta = old_beta
-        return np.sqrt(-np.log(1 - np.average(outcomes)))
+from qrec.device_simulation import ExperimentResult, PhotonSource, give_outcome, p_model
+from qrec.policies import comm_success_prob, ep_greedy
+from qrec.qlearning import (
+    Hyperparameters,
+    Qlearning_parameters,
+    give_reward,
+    update_buffer_and_compute_mean,
+    update_reload,
+)
+from qrec.utils import perr_model  # model_aware_optimal,
 
 
 # How the q-learning parameters update.
@@ -167,50 +62,17 @@ def updates(
     n_0 = qlearning.n0
     n_1 = qlearning.n1
 
-    q_1[beta_indx, outcome, guess] += (reward - q_1[beta_indx, outcome, guess]) / n_1[
-        beta_indx, outcome, guess
-    ]
-    q_0[beta_indx] += (
-        np.max([q_1[beta_indx, outcome, g] for g in range(2)]) - q_0[beta_indx]
-    ) / n_0[beta_indx]
+    n1_curr = n_1[beta_indx, outcome, guess]
+    q_1_curr = q_1[beta_indx, outcome, guess]
+    q_1[beta_indx, outcome, guess] += (reward - q_1_curr) / n1_curr
+
+    n_0_curr = n_0[beta_indx]
+    optimal_reward = np.max([q_1[beta_indx, outcome, g] for g in range(2)])
+    q_0[beta_indx] += (optimal_reward - q_0[beta_indx]) / n_0_curr
+
     n_0[beta_indx] += 1
     n_1[beta_indx, outcome, guess] += 1
     return qlearning
-
-
-# How the learning rate changes when the environment changes.
-# It could be interesting to change the reward with the mean_rew.
-
-
-def update_reload(qlearning: Qlearning_parameters, restart_point, restart_epsilon):
-    """
-    Reset n0 and n1 when the change is large.
-
-    Parameters
-    ----------
-    qlearning : Qlearning_parameters
-        DESCRIPTION.
-    restart_point : TYPE
-        DESCRIPTION.
-    restart_epsilon : TYPE
-        DESCRIPTION.
-    """
-    # TODO: check why restart_epsilon is a parameter of this function.
-    # Also check why always returns epsilon=1
-    epsilon = 1
-    n_0 = qlearning.n0
-    n_1 = qlearning.n1
-
-    for i, n1_i in enumerate(qlearning.n1):
-        n_0[i] = restart_point
-        if n_0[i] < 1:
-            n_0[i] = 1
-        for j, n1_i_j in enumerate(n1_i):
-            for k, n1_i_j_k in enumerate(n1_i_j):
-                n_1[i, j, k] = restart_point
-                if n1_i_j_k < 1:
-                    n_1[i, j, k] = 1
-    qlearning.parms["epsilon"] = epsilon
 
 
 # Reload the Q-function with the model.
@@ -461,8 +323,7 @@ def run_experiment(
                 )
             )
 
-        # Check for jumps in the parameters
-        # TODO: Why 3000? use
+        # Check for jumps in the parameters.
         if qlearning.n0[new_beta_idx] > hyperparam.check_jump_threshold:
             check_mean_derivative(
                 witness_buffer,
