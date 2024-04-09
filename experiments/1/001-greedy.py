@@ -9,10 +9,10 @@ import numpy as np
 
 sys.path.insert(0, os.getcwd())
 
-from qrec.stage_run import run_experiment
+from qrec.stage_run import comm_success_prob, run_experiment
 from qrec.device_simulation import give_outcome
 from qrec.qlearning import Hyperparameters, define_q, give_reward
-from qrec.policies import comm_success_prob, ep_greedy
+from qrec.policies import ep_greedy
 from qrec.utils import (bayes_decision_error_probability,
                         model_aware_optimal)
 

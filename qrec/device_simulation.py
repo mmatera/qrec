@@ -1,6 +1,21 @@
 """
 Device simulation
 
+This module contains the functions and structures to simulate the interaction with
+the experimental device.
+
+In the present case, the device consists of a coherent state photon source, a channel
+where the photons travel and a detector.
+
+The photons are characterized by an amplitude alpha and a distribution of phases +-1
+determined by the bias.
+
+The detector is characterized by an offset parameter beta, which determines when the arriving photon
+is not detected, and a detunning parameter lambda that accounts for the relative drift of beta out of
+the optimal tunning condition.
+
+Inside this module, all these parameters are asumed to be known.
+
 """
 from collections import namedtuple
 from typing import Tuple

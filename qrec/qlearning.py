@@ -1,5 +1,12 @@
 """
-Qlearning approach
+Reinforced learning.
+
+This module defines the functions and structures for implementing the
+reinforced learning.
+
+
+In this module, we only have access to the parameter beta to be determined,
+and the previous outcomes and rewards.
 
 """
 
@@ -80,6 +87,59 @@ def give_reward(guess, hidden_phase):
         1. if guess == hidden_phase, 0 otherwise
     """
     return int(int(guess) == int(hidden_phase))
+
+
+
+# How the q-learning parameters update.
+def updates(
+    beta_indx,
+    outcome,
+    guess,
+    reward,
+    qlearning: Qlearning_parameters,
+    #    learning_rate=0.001,
+):
+    """
+    Given that by setting beta=beta[indb] `outcome` was obtained,
+    and the `guess`, update the qlearning params
+    using `reward` and `the learning rate lr`.
+
+    Parameters
+    ----------
+    beta_indx : int
+        index of the beta parameter
+    outcome: int
+        the actual result of the measurement
+    guess : TYPE
+        estimated result.
+    reward : float
+        the reward obtained if guess and outcome match.
+    qlearning : QLarningParms
+        current values of the learning parameters.
+
+    Returns
+    -------
+    result : QLearningParms
+        the new values of the learning parameters.
+
+    """
+
+    q_0 = qlearning.q0
+    q_1 = qlearning.q1
+    n_0 = qlearning.n0
+    n_1 = qlearning.n1
+
+    n1_curr = n_1[beta_indx, outcome, guess]
+    q_1_curr = q_1[beta_indx, outcome, guess]
+    q_1[beta_indx, outcome, guess] += (reward - q_1_curr) / n1_curr
+
+    n_0_curr = n_0[beta_indx]
+    optimal_reward = np.max([q_1[beta_indx, outcome, g] for g in range(2)])
+    q_0[beta_indx] += (optimal_reward - q_0[beta_indx]) / n_0_curr
+
+    n_0[beta_indx] += 1
+    n_1[beta_indx, outcome, guess] += 1
+    return qlearning
 
 
 # How the learning rate changes when the environment changes.

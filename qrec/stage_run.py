@@ -1,9 +1,7 @@
 """
 Stage run
 
-The objective of this script is to run the experiment,
-track he hyperparameters, save the values of interest
-and make the decisions.
+The functions of this module implement the reinforced learning protocol over the simulated device.
 
 """
 
@@ -11,68 +9,74 @@ import time
 
 import numpy as np
 
-from qrec.device_simulation import ExperimentResult, PhotonSource, give_outcome, p_model
-from qrec.policies import comm_success_prob, ep_greedy
+from qrec.device_simulation import ExperimentResult, PhotonSource, detection_state_probability, give_outcome, p_model
+from qrec.policies import ep_greedy
 from qrec.qlearning import (
     Hyperparameters,
     Qlearning_parameters,
     give_reward,
     update_buffer_and_compute_mean,
     update_reload,
+    updates,
 )
 from qrec.utils import perr_model  # model_aware_optimal,
 
 
-# How the q-learning parameters update.
-def updates(
-    beta_indx,
-    outcome,
-    guess,
-    reward,
-    qlearning: Qlearning_parameters,
-    #    learning_rate=0.001,
+def comm_success_prob(
+    qlearning: Qlearning_parameters, dispersion, alpha=0.4, detuning=0.0
 ):
     """
-    Given that by setting beta=beta[indb] `outcome` was obtained,
-    and the `guess`, update the qlearning params
-    using `reward` and `the learning rate lr`.
+    (Former Psq)
+    Compute the success probability of a communication.
+
 
     Parameters
     ----------
-    beta_indx : int
-        index of the beta parameter
-    outcome: int
-        the actual result of the measurement
-    guess : TYPE
-        estimated result.
-    reward : float
-        the reward obtained if guess and outcome match.
-    qlearning : QLarningParms
-        current values of the learning parameters.
+    qlearning : Qlearning_parameters
+        Qlearning_parameters.
+    dispersion : float
+        dispersion of the gaussian.
+    alpha : TYPE, optional
+        Offset of the signal. The default is 0.4.
+    detuning: float, optional
+        detuning parameter in the detector.
 
     Returns
     -------
-    result : QLearningParms
-        the new values of the learning parameters.
+    float
+        DESCRIPTION.
 
     """
-
     q_0 = qlearning.q0
     q_1 = qlearning.q1
-    n_0 = qlearning.n0
-    n_1 = qlearning.n1
+    betas_grid = qlearning.betas_grid
+    # Always use "near_prob" to choice beta and alpha
+    # With this choice, dispersion is not required.
+    near_prob = 1
+    # Pick beta from the beta grid
+    indb, beta = ep_greedy(q_0, betas_grid, dispersion, near_prob=near_prob)
+    alpha_phases = [alpha, -alpha]
 
-    n1_curr = n_1[beta_indx, outcome, guess]
-    q_1_curr = q_1[beta_indx, outcome, guess]
-    q_1[beta_indx, outcome, guess] += (reward - q_1_curr) / n1_curr
+    def alpha_from_experiment(out):
+        """
+        returns alpha or -alpha according
+        to the parameters
+        """
+        return ep_greedy(
+            q_1[indb, out, :], alpha_phases, dispersion, near_prob=near_prob
+        )[1]
 
-    n_0_curr = n_0[beta_indx]
-    optimal_reward = np.max([q_1[beta_indx, outcome, g] for g in range(2)])
-    q_0[beta_indx] += (optimal_reward - q_0[beta_indx]) / n_0_curr
+    return 0.5 * sum(
+        detection_state_probability(
+            # pick alpha  or -alpha according q1 and the parameters.
+            alpha_from_experiment(outcome),
+            beta,
+            detuning,
+            outcome,
+        )
+        for outcome in range(2)
+    )
 
-    n_0[beta_indx] += 1
-    n_1[beta_indx, outcome, guess] += 1
-    return qlearning
 
 
 # Reload the Q-function with the model.
