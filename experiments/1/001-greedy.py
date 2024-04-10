@@ -9,10 +9,12 @@ import numpy as np
 
 sys.path.insert(0, os.getcwd())
 
-from qrec.Stage_run import run_experiment
-from qrec.utils import (Hyperparameters, bayes_decision_error_probability,
-                        comm_success_prob, define_q, ep_greedy, give_outcome,
-                        give_reward, model_aware_optimal)
+from qrec.stage_run import comm_success_prob, run_experiment
+from qrec.device_simulation import give_outcome
+from qrec.qlearning import Hyperparameters, define_q, give_reward
+from qrec.policies import ep_greedy
+from qrec.utils import (bayes_decision_error_probability,
+                        model_aware_optimal)
 
 experiment_index = 1
 path = "experiments/{}/".format(experiment_index)

@@ -11,9 +11,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, os.getcwd())
-from qrec.Stage_run import run_experiment
-from qrec.utils import (Hyperparameters, bayes_decision_error_probability,
-                        model_aware_optimal)
+from qrec.stage_run import run_experiment
+from qrec.qlearning import Hyperparameters
+from qrec.utils import  bayes_decision_error_probability, model_aware_optimal
+
 
 EXPERIMENT_INDEX = 2
 EXPERIMENT_PATH = "experiments/stability_test/"

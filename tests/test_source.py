@@ -4,8 +4,11 @@ import sys
 sys.path.insert(0, os.getcwd())
 
 import numpy as np
-from qrec.Stage_run import PhotonSource
-from qrec.utils import detection_state_probability, give_outcome
+from qrec.device_simulation import (
+    PhotonSource,
+    detection_state_probability,
+    give_outcome,
+)
 
 
 def test_give_outcome():
@@ -34,7 +37,9 @@ def test_source():
     bias = 0
     lambd = 0.0
     alpha = 1.5
-    source = PhotonSource(alpha=alpha, lambd=lambd, bias=bias)
+    source = PhotonSource(
+        [-2 * alpha, -1 * alpha, 0], alpha=alpha, lambd=lambd, bias=bias
+    )
 
     for beta, case in [(0.0, "no tunning"), (alpha, "tunned"), (-alpha, "opposite")]:
         source.beta = beta
